@@ -152,7 +152,8 @@ def load_colored_mnist_text(file_path):
 
 
 def get_data_dir(hw_number: int):
-    return join('deepul', 'homeworks', f'hw{hw_number}', 'data')
+    return join('homeworks', f'hw{hw_number}', 'data')
+    # return join('deepul', 'homeworks', f'hw{hw_number}', 'data')
 
 
 def quantize(images: np.ndarray, n_bits: int = 8):

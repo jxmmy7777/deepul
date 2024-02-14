@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn import Conv2d, Linear, Flatten, ConvTranspose2d
 
 class Encoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dim):
@@ -61,15 +62,106 @@ class VAE(nn.Module):
         
         return  x_mean, x_log_var, mu, log_var
     
-    def sample_with_noise(self, size=100, device='cpu'):
-        z = torch.randn(size, self.Decoder.latent_dim, device=device)
+    
+    @torch.no_grad()
+    def sample_reconstruct(self, x, device='cpu'):
+        mu, log_var = self.Encoder(x)
+        z = self.reparameterize(mu, log_var)
+       
+        return self.sample_with_noise(z, device=device)
+    
+    @torch.no_grad()
+    def sample_with_noise(self,z=None, size=100, device='cpu'):
+        if z is None:
+            z = torch.randn(size, self.Decoder.latent_dim, device=device)
         mu, log_var = self.Decoder(z)  # Ensure your Decoder outputs both
         x_hat = self.reparameterize(mu, log_var)
         return x_hat
 
-    def sample_without_noise(self, size=100, device='cpu'):
-        z = torch.randn(size, self.Decoder.latent_dim, device=device)
+    @torch.no_grad()
+    def sample_without_noise(self, z=None, size=100, device='cpu'):
+        if z is None:
+            z = torch.randn(size, self.Decoder.latent_dim, device=device)
         mu, _ = self.Decoder(z)  # Use only mu from your Decoder's output
         return mu
-        
     
+    @torch.no_grad()
+    def sample_interpolate(self, interpolate_pt = 10, device='cpu'):
+        z_grid = torch.randn(4, self.Decoder.latent_dim, device=device)
+        #perform interpolatioin in the latent space
+        
+        #first axis
+        z_grid_line_1 = self.interpolate(z_grid[0], z_grid[1], size=interpolate_pt)
+        z_grid_line_2 = self.interpolate(z_grid[2], z_grid[3], size=interpolate_pt)
+        
+        # Prepare a tensor to hold the interpolated grid points
+        z_interpolate = torch.zeros((interpolate_pt, interpolate_pt, self.Decoder.latent_dim), device=device)
+
+        # Interpolate between corresponding points in z_grid_line_1 and z_grid_line_2 to fill the grid
+        for i in range(interpolate_pt):
+            interp_point = self.interpolate(z_grid_line_1[i:i+1], z_grid_line_2[i:i+1], size=interpolate_pt)
+            z_interpolate[i * interpolate_pt: (i+1) * interpolate_pt, :] = interp_point.squeeze()
+       
+        return self.sample_with_noise(z_interpolate, size=interpolate_pt * interpolate_pt, device=device)
+    
+    @staticmethod
+    def interpolate(z_start, z_end, size=10):
+        weights = torch.linspace(0, 1, steps=size).unsqueeze(1).to(z_start.device)
+        z_interp = (1 - weights) * z_start + weights * z_end
+        return z_interp
+    
+class ConvEncoder(nn.Module):
+    def __init__(self, latent_dim):
+        super(ConvEncoder, self).__init__()
+        self.latent_dim = latent_dim
+        self.net = nn.Sequential(
+            nn.Conv2d(3, 32, 3, 1, 1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, 2, 1), # 16 x 16
+            nn.ReLU(),
+            nn.Conv2d(64, 128, 3, 2, 1), # 8 x 8
+            nn.ReLU(),
+            nn.Conv2d(128, 256, 3, 2, 1), # 4 x 4
+            nn.ReLU(),
+            nn.Flatten(), # 16
+            nn.Linear(4 * 4 * 256, 2 * latent_dim)
+        )
+    def forward(self, x):
+        #
+        output = self.net(x)
+        # decopule to mu and log_var
+        mu, log_var = output.chunk(2, dim=1)
+        # Scale to [-10, 10]
+        # log_var = log_var * 10
+        log_var = torch.tanh(log_var)
+        # Scale to [-10, 10]
+        log_var = log_var * 10
+        return mu, log_var
+class ConvDecoder(nn.Module):
+    def __init__(self, latent_dim):
+        super(ConvDecoder, self).__init__()
+        self.latent_dim = latent_dim
+        self.fc = nn.Linear(latent_dim, 4 * 4 * 128)  # Prepare for reshaping to a 4x4 feature map
+        self.conv_transpose= nn.Sequential(
+            nn.ConvTranspose2d(128, 128, kernel_size=4, stride=2, padding=1),  # Output: 8 x 8
+            nn.ReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # Output: 16 x 16
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # Output: 32 x 32
+            nn.ReLU(),
+            nn.Conv2d(32, 3, kernel_size=3, stride=1, padding=1)  # Output: 32 x 32 (with 3 channels)
+        )
+    def forward(self, x):
+        #
+        x = self.fc(x)
+        x = x.view(-1, 128, 4, 4)  # Reshape to (Batch, Channels, Height, Width)
+        # decopule to mu and log_var
+        x = self.conv_transpose(x)
+        mu = x
+        log_var = torch.zeros_like(mu)
+        # Scale to [-10, 10]
+        # log_var = torch.tanh(log_var)
+        # # Scale to [-10, 10]
+        # log_var = log_var * 10
+        # log_var = log_var * 10
+        return mu, log_var

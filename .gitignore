@@ -6,5 +6,7 @@
 *.pkl
 *.jpg
 
-
 build/
+
+*.zip
+*.pth

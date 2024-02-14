@@ -6,7 +6,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-
+from functools import partial
 
 def q1(train_data, test_data, part, dset_id):
     """
@@ -51,7 +51,7 @@ def q1(train_data, test_data, part, dset_id):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    loss_fn = loss_fn_ELBO
+    loss_fn = partial(loss_fn_ELBO, mode="gll")
 
     #optimizer
     #Training optimizer
@@ -64,7 +64,7 @@ def q1(train_data, test_data, part, dset_id):
         hyperparams=hyperparams,
         optimizer=optimizer,
         loss_fn=loss_fn,
-        checkpoint_path=f"homeworks/hw2/results/q3b_{dset_id}",
+        checkpoint_path=f"homeworks/hw2/results/q1{part}_{dset_id}",
         device=device,
         debug_mode=False
     )
@@ -84,4 +84,6 @@ if __name__ == "__main__":
     # Load the data
     
     # q1_save_results('a', 1, q1)
-    q1_save_results('a', 2, q1)
+    # q1_save_results('a', 2, q1)
+    q1_save_results('b', 1, q1)
+    q1_save_results('b', 2, q1)
