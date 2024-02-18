@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 import torch
 import numpy as np
-
+import torch.nn.functional as F
 def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer, loss_fn, scheduler=None, save_checkpoint=True, checkpoint_path=None, device=None, debug_mode=False):
     num_epochs = 1 if debug_mode else hyperparams['num_epochs']
 
@@ -47,7 +47,7 @@ def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer,
             batch_inputs = batch_inputs[0].to(device)
             optimizer.zero_grad()
 
-            x_mu,x_log_var, mu, log_var = model(batch_inputs)
+            x_mu, x_log_var, mu, log_var = model(batch_inputs)
             reconstruction_loss, KLD, loss = loss_fn(x_mu, x_log_var, batch_inputs, mu, log_var)
             loss.backward()
             optimizer.step()
@@ -98,12 +98,12 @@ def gaussian_NLL(mu, log_var, x):
     
     # This computes the Gaussian negative log likelihood with a diagonal covariance matrix
     negative_log_likelihood = 0.5 * (torch.exp(log_var) + (x - mu) ** 2 / torch.exp(log_var) + const_term)
-    return torch.sum(negative_log_likelihood)
+    return torch.sum(negative_log_likelihood)(dim=-1).mean()
 
 def loss_fn_ELBO(x_mu, x_log_var, x, mu, log_var, mode = "mse", beta = 1):
     
     if mode =="mse":
-        reconstruction_loss = nn.MSELoss()(x_mu, x)
+        reconstruction_loss =  F.mse_loss(x_mu, x, reduction='none').sum(dim=(1,2,3)).mean()
     else:
         reconstruction_loss = gaussian_NLL(x_mu, x_log_var,x)
     KLD = KL_divergence(mu, log_var)
