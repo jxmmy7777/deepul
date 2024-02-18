@@ -86,27 +86,23 @@ class VAE(nn.Module):
         return mu
     
     @torch.no_grad()
-    def sample_interpolate(self, interpolate_pt = 10, device='cpu'):
-        z_grid = torch.randn(4, self.Decoder.latent_dim, device=device)
-        #perform interpolatioin in the latent space
+    def sample_interpolate(self, x,x1, interpolate_pt = 10, device='cpu'):
         
-        #first axis
-        z_grid_line_1 = self.interpolate(z_grid[0], z_grid[1], size=interpolate_pt)
-        z_grid_line_2 = self.interpolate(z_grid[2], z_grid[3], size=interpolate_pt)
+        assert x.shape ==x1.shape
         
-        # Prepare a tensor to hold the interpolated grid points
-        z_interpolate = torch.zeros((interpolate_pt, interpolate_pt, self.Decoder.latent_dim), device=device)
+        
+        mu, _ = self.Encoder(x)
+        mu_2, _ = self.Encoder(x1)
+        
+        z_interpolate = self.interpolate(mu[:,None], mu_2[:,None])  # Linear interpolation in extra dim=1
 
-        # Interpolate between corresponding points in z_grid_line_1 and z_grid_line_2 to fill the grid
-        for i in range(interpolate_pt):
-            interp_point = self.interpolate(z_grid_line_1[i:i+1], z_grid_line_2[i:i+1], size=interpolate_pt)
-            z_interpolate[i * interpolate_pt: (i+1) * interpolate_pt, :] = interp_point.squeeze()
-       
-        return self.sample_with_noise(z_interpolate, size=interpolate_pt * interpolate_pt, device=device)
+        # Decode the interpo
+    
+        return self.sample_with_noise(z_interpolate.view(-1,self.Decoder.latent_dim), size=interpolate_pt * interpolate_pt, device=device)
     
     @staticmethod
     def interpolate(z_start, z_end, size=10):
-        weights = torch.linspace(0, 1, steps=size).unsqueeze(1).to(z_start.device)
+        weights = torch.linspace(0, 1, steps=size).unsqueeze(0).unsqueeze(-1).to(z_start.device)
         z_interp = (1 - weights) * z_start + weights * z_end
         return z_interp
     
@@ -133,9 +129,9 @@ class ConvEncoder(nn.Module):
         mu, log_var = output.chunk(2, dim=1)
         # Scale to [-10, 10]
         # log_var = log_var * 10
-        log_var = torch.tanh(log_var)
-        # Scale to [-10, 10]
-        log_var = log_var * 10
+        # log_var = torch.tanh(log_var)
+        # # Scale to [-10, 10]
+        # log_var = log_var * 10
         return mu, log_var
 class ConvDecoder(nn.Module):
     def __init__(self, latent_dim):
@@ -157,7 +153,7 @@ class ConvDecoder(nn.Module):
         x = x.view(-1, 128, 4, 4)  # Reshape to (Batch, Channels, Height, Width)
         # decopule to mu and log_var
         x = self.conv_transpose(x)
-        mu = x
+        mu = torch.sigmoid(x)
         log_var = torch.zeros_like(mu)
         # Scale to [-10, 10]
         # log_var = torch.tanh(log_var)

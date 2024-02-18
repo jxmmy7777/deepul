@@ -30,10 +30,8 @@ def q2_a(train_data, test_data, dset_id):
 
     """ YOUR CODE HERE """
     
-    if dset_id ==1:
-        hyperparams = {'lr': 1e-3, 'batch_size': 32, 'num_epochs': 3}
-    else:
-        hyperparams = {'lr': 1e-3, 'batch_size': 32, 'num_epochs': 3}
+  
+    hyperparams = {'lr': 1e-3, 'num_epochs': 100}
     
     encoder = ConvEncoder(latent_dim=16)
     decoder = ConvDecoder(latent_dim=16)
@@ -75,17 +73,17 @@ def q2_a(train_data, test_data, dset_id):
     
     samples_w_noise =  model.sample_with_noise(size=100, device=device).cpu().detach().numpy()
     # Reconstruct samples
-    test_samples = test_tensor[:50]
+    test_samples = test_tensor[:50].to(device)
     #should we sample or not?
-    reconstruct_samples = model.sample_reconstruct(test_samples.to(device),device=device).cpu().detach().numpy()
+    reconstruct_samples = model.sample_reconstruct(test_samples,device=device).cpu().detach().numpy()
     paired_treconstruct = np.concatenate([test_samples.cpu().numpy(), reconstruct_samples], axis=0)
     #reshape to pair pair?
     
     #Interpolate samples
-    interpolate_samples = model.sample_interpolate(interpolate_pt=10, device=device).cpu().detach().numpy()
+    interpolate_samples = model.sample_interpolate(test_samples[:10],test_samples[10:20],interpolate_pt=10, device=device).cpu().detach().numpy()
     
 
-    return train_losses, test_losses, process_images(samples_w_noise), process_images(reconstruct_samples), process_images(interpolate_samples)
+    return train_losses, test_losses, process_images(samples_w_noise), process_images(paired_treconstruct), process_images(interpolate_samples)
 def process_images(images):
     images = images.transpose(0, 2, 3, 1)
     

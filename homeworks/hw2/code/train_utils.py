@@ -100,15 +100,16 @@ def gaussian_NLL(mu, log_var, x):
     negative_log_likelihood = 0.5 * (torch.exp(log_var) + (x - mu) ** 2 / torch.exp(log_var) + const_term)
     return torch.sum(negative_log_likelihood)
 
-def loss_fn_ELBO(x_mu, x_log_var, x, mu, log_var, mode = "mse", beta = 0.01):
+def loss_fn_ELBO(x_mu, x_log_var, x, mu, log_var, mode = "mse", beta = 1):
     
     if mode =="mse":
-        reconstruction_loss = nn.MSELoss(reduction='mean')(x_mu, x)
+        reconstruction_loss = nn.MSELoss()(x_mu, x)
     else:
         reconstruction_loss = gaussian_NLL(x_mu, x_log_var,x)
     KLD = KL_divergence(mu, log_var)
     
     #check nan
+    # print(reconstruction_loss, KLD)
     assert not torch.isnan(reconstruction_loss).any()
     assert not torch.isnan(KLD).any()
     return reconstruction_loss, KLD, reconstruction_loss+KLD*beta
