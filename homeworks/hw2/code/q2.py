@@ -50,8 +50,7 @@ def q2_a(train_data, test_data, dset_id):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    loss_fn = partial(loss_fn_ELBO, mode="mse")
-
+   
     #optimizer
     #Training optimizer
     optimizer = optim.Adam(model.parameters(), lr=hyperparams["lr"])
@@ -62,7 +61,6 @@ def q2_a(train_data, test_data, dset_id):
         model=model,
         hyperparams=hyperparams,
         optimizer=optimizer,
-        loss_fn=loss_fn,
         checkpoint_path=f"homeworks/hw2/results/q2_{dset_id}",
         device=device,
         debug_mode=False

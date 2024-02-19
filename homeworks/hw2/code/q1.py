@@ -32,13 +32,13 @@ def q1(train_data, test_data, part, dset_id):
     """ YOUR CODE HERE """
     
     if dset_id ==1:
-        hyperparams = {'lr': 1e-4, 'batch_size': 32, 'num_epochs': 100}
+        hyperparams = {'lr': 1e-4, 'batch_size': 32, 'num_epochs': 10}
     else:
-        hyperparams = {'lr': 1e-4, 'batch_size': 32, 'num_epochs': 100}
+        hyperparams = {'lr': 1e-4, 'batch_size': 32, 'num_epochs': 10}
     
     encoder = Encoder(2, 100, 2)
     decoder = Decoder(2, 100, 2)
-    model = VAE(encoder, decoder)
+    model = VAE(encoder, decoder, loss_mode="gll")
 
     
     train_tensor = torch.tensor(train_data)
@@ -63,7 +63,6 @@ def q1(train_data, test_data, part, dset_id):
         model=model,
         hyperparams=hyperparams,
         optimizer=optimizer,
-        loss_fn=loss_fn,
         checkpoint_path=f"homeworks/hw2/results/q1{part}_{dset_id}",
         device=device,
         debug_mode=False
@@ -72,8 +71,8 @@ def q1(train_data, test_data, part, dset_id):
 
     # Sample from the model
     
-    samples_w_noise =  model.sample_with_noise(1000, device=device).cpu().detach().numpy()
-    samples_wo_noise = model.sample_without_noise(1000, device=device).cpu().detach().numpy()
+    samples_w_noise =  model.sample_with_noise(size = 1000, device=device).cpu().detach().numpy()
+    samples_wo_noise = model.sample_without_noise(size = 1000, device=device).cpu().detach().numpy()
     
 
     return train_losses, test_losses, samples_w_noise, samples_wo_noise
@@ -83,7 +82,7 @@ def q1(train_data, test_data, part, dset_id):
 if __name__ == "__main__":
     # Load the data
     
-    # q1_save_results('a', 1, q1)
-    # q1_save_results('a', 2, q1)
+    q1_save_results('a', 1, q1)
+    q1_save_results('a', 2, q1)
     q1_save_results('b', 1, q1)
     q1_save_results('b', 2, q1)

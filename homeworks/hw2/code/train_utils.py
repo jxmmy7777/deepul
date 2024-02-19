@@ -6,7 +6,8 @@ from tqdm import tqdm
 import torch
 import numpy as np
 import torch.nn.functional as F
-def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer, loss_fn, scheduler=None, save_checkpoint=True, checkpoint_path=None, device=None, debug_mode=False):
+
+def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer, scheduler=None, save_checkpoint=True, checkpoint_path=None, device=None, debug_mode=False):
     num_epochs = 1 if debug_mode else hyperparams['num_epochs']
 
     train_losses = []
@@ -26,8 +27,13 @@ def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer,
         with torch.no_grad():
             for i, batch_inputs in enumerate(test_loader):
                 batch_inputs = batch_inputs[0].to(device)
-                x_mu, x_log_var, mu, log_var = model(batch_inputs)
-                reconstruction_loss, KLD, test_loss = loss_fn(x_mu, x_log_var, batch_inputs, mu, log_var)
+                outputs = model(batch_inputs)  # Model outputs a dictionary
+                loss_dict = model.loss(*outputs, x=batch_inputs)
+                
+                test_loss = loss_dict['loss']
+                reconstruction_loss = loss_dict['reconstruction_loss']
+                KLD = loss_dict['KLD']
+               
                 total_test_loss += test_loss.item()
                 total_reconstruction_loss += reconstruction_loss.item()
                 total_KL_divergence += KLD.item()
@@ -46,9 +52,13 @@ def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer,
         for i, batch_inputs in enumerate(train_loader):
             batch_inputs = batch_inputs[0].to(device)
             optimizer.zero_grad()
-
-            x_mu, x_log_var, mu, log_var = model(batch_inputs)
-            reconstruction_loss, KLD, loss = loss_fn(x_mu, x_log_var, batch_inputs, mu, log_var)
+            outputs = model(batch_inputs)
+            loss_dict = model.loss(*outputs, x=batch_inputs)
+                
+            loss = loss_dict['loss']
+            reconstruction_loss = loss_dict['reconstruction_loss']
+            KLD = loss_dict['KLD']
+            
             loss.backward()
             optimizer.step()
 
@@ -87,29 +97,3 @@ def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer,
 
     # Adjusted return statement to include stacked loss arrays
     return train_losses_stacked, test_losses_stacked
-
-def KL_divergence(mu, log_var):
-    return -0.5 * (1 + log_var - mu.pow(2) - log_var.exp()).sum(dim=1).mean()
-
-
-def gaussian_NLL(mu, log_var, x):
-    # This prevents negative infinity in the log variance
-    const_term = torch.log(torch.tensor(2 * torch.pi, device=log_var.device, dtype=log_var.dtype))
-    
-    # This computes the Gaussian negative log likelihood with a diagonal covariance matrix
-    negative_log_likelihood = 0.5 * (torch.exp(log_var) + (x - mu) ** 2 / torch.exp(log_var) + const_term)
-    return torch.sum(negative_log_likelihood)(dim=-1).mean()
-
-def loss_fn_ELBO(x_mu, x_log_var, x, mu, log_var, mode = "mse", beta = 1):
-    
-    if mode =="mse":
-        reconstruction_loss =  F.mse_loss(x_mu, x, reduction='none').sum(dim=(1,2,3)).mean()
-    else:
-        reconstruction_loss = gaussian_NLL(x_mu, x_log_var,x)
-    KLD = KL_divergence(mu, log_var)
-    
-    #check nan
-    # print(reconstruction_loss, KLD)
-    assert not torch.isnan(reconstruction_loss).any()
-    assert not torch.isnan(KLD).any()
-    return reconstruction_loss, KLD, reconstruction_loss+KLD*beta

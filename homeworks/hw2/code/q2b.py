@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
 
-def q2_a(train_data, test_data, dset_id):
+def q2_b(train_data, test_data, dset_id):
     """
     train_data: An (n_train, 32, 32, 3) uint8 numpy array of color images with values in {0, ..., 255}
     test_data: An (n_test, 32, 32, 3) uint8 numpy array of color images with values in {0, ..., 255}
@@ -30,27 +30,26 @@ def q2_a(train_data, test_data, dset_id):
 
     """ YOUR CODE HERE """
     
-  
-    hyperparams = {'lr': 1e-3, 'num_epochs': 10}
+    hyperparams = {'lr': 1e-3, 'num_epochs': 50}
     
-    encoder = ConvEncoder(latent_dim=16)
-    decoder = ConvDecoder(latent_dim=16)
-    model = VAE(encoder, decoder)
+    
+    model =  HVAE(input_channels=3, latent_dim_1=12, latent_dim_2=12, latent_img_dim=2)
 
-    
+  
     train_tensor = (torch.tensor(train_data)*1.0 / 255.0 -0.5) *2
     test_tensor = (torch.tensor(test_data)*1.0 / 255.0 - 0.5) *2
     
     train_tensor = train_tensor.permute(0, 3, 1, 2)
     test_tensor = test_tensor.permute(0, 3, 1, 2)
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
-    test_loader = DataLoader(TensorDataset(test_tensor), batch_size=128, shuffle=False)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=512, shuffle=True)
+    test_loader = DataLoader(TensorDataset(test_tensor), batch_size=512, shuffle=False)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    loss_fn = partial(loss_fn_ELBO, mode="mse")
+    # load from checkpoint
+    # model.load_state_dict(torch.load(f"homeworks/hw2/results/q2b_{dset_id}/model.pth"))
 
     #optimizer
     #Training optimizer
@@ -62,11 +61,12 @@ def q2_a(train_data, test_data, dset_id):
         model=model,
         hyperparams=hyperparams,
         optimizer=optimizer,
-        loss_fn=loss_fn,
-        checkpoint_path=f"homeworks/hw2/results/q2_{dset_id}",
+        checkpoint_path=f"homeworks/hw2/results/q2b_{dset_id}",
         device=device,
         debug_mode=False
     )
+    
+    
 
 
     # Sample from the model
@@ -75,8 +75,10 @@ def q2_a(train_data, test_data, dset_id):
     # Reconstruct samples
     test_samples = test_tensor[:50].to(device)
     #should we sample or not?
-    reconstruct_samples = model.sample_reconstruct(test_samples,device=device).cpu().detach().numpy()
-    paired_treconstruct = np.concatenate([test_samples.cpu().numpy(), reconstruct_samples], axis=0)
+    paired_treconstruct = np.zeros((100, 3, 32, 32))
+    reconstruct_samples = model.reconstruct(test_samples).cpu().detach().numpy()
+    paired_treconstruct[::2] = test_samples.cpu().detach().numpy()
+    paired_treconstruct[1::2] = reconstruct_samples
     #reshape to pair pair?
     
     #Interpolate samples
@@ -100,4 +102,5 @@ def process_images(images):
 if __name__ == "__main__":
     # Load the data
     # q2_save_results('a', 1, q2_a)
-    q2_save_results('a', 2, q2_a)
+    # q2_save_results('a', 2, q2_a)
+    q2_save_results('b', 1, q2_b)
