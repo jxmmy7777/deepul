@@ -84,6 +84,7 @@ class VQVAE(BaseVAE):
             nn.BatchNorm2d(256),
             nn.ReLU(),
             ConvTranspose2d(256, input_channels, 4, stride=2, padding=1), #32x32
+            nn.Tanh()
         )
     
     def encode(self, x):
@@ -99,9 +100,11 @@ class VQVAE(BaseVAE):
         return x_recon, vq_loss
     
     def loss(self, x_mean, vq_loss, x):
-        vq_loss = vq_loss.sum(dim=(1,2,3)).mean()
+        # vq_loss = vq_loss.sum(dim=(1,2,3)).mean()
+        vq_loss = vq_loss.sum(dim=(1,2,3)).mean() 
         reconstruction_loss =  F.mse_loss(x_mean, x, reduction='none').sum(dim=(1,2,3)).mean()
         total_loss = reconstruction_loss + vq_loss
+        # print(vq_loss.item(),reconstruction_loss.item(), total_loss.item())
         loss_dict = {
             "reconstruction_loss": reconstruction_loss,
             "KLD": vq_loss, #We named vq_loss as KLD for trainer

@@ -40,8 +40,8 @@ def q3(train_data, test_data, dset_id):
     train_tensor = train_tensor.permute(0, 3, 1, 2)
     test_tensor = test_tensor.permute(0, 3, 1, 2)
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=256, shuffle=True)
-    test_loader = DataLoader(TensorDataset(test_tensor), batch_size=256, shuffle=False)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
+    test_loader = DataLoader(TensorDataset(test_tensor), batch_size=128, shuffle=False)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -133,7 +133,6 @@ def q3(train_data, test_data, dset_id):
     )
    
     
-
 def process_images(images):
     images = images.transpose(0, 2, 3, 1)
     
@@ -162,4 +161,4 @@ if __name__ == "__main__":
     # Load the data
     # q2_save_results('a', 1, q2_a)
     # q2_save_results('a', 2, q2_a)
-    q3_save_results(2, q3)
+    q3_save_results(1, q3)
