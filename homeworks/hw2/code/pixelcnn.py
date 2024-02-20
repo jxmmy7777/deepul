@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch
 class MaskConv2d(nn.Conv2d):
   def __init__(self, mask_type, *args, conditional_size=None, 
                color_conditioning=False, **kwargs):
@@ -152,7 +152,12 @@ class PixelCNN(nn.Module):
       return out.view(batch_size, self.n_colors, *self.input_shape)
 
   def loss(self, x_predict, x, cond=None):
-    return F.cross_entropy(x_predict, x.long())
+      loss_dict = {
+            "reconstruction_loss": torch.zeros(1,),
+            "KLD": torch.zeros(1,), #We named vq_loss as KLD for trainer
+            "loss": F.cross_entropy(x_predict, x.long())
+        }
+      return loss_dict 
 
   def sample(self, n, cond=None):
     samples = torch.zeros(n, *self.input_shape).cuda()

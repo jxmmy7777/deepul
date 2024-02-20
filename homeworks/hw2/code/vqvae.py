@@ -45,14 +45,14 @@ class VectorQuantizer(nn.Module):
         quantized_latents = torch.matmul(encodings_one_hot, self.embedding.weight).view(B, H, W, D)
         
         #Loss
-        embed_loss   = F.mse_loss(latents.detach(), quantized_latents)
-        commit_loss = F.mse_loss(quantized_latents.detach(), latents)
+        embed_loss   = F.mse_loss(latents.detach(), quantized_latents, reduction='none')
+        commit_loss = F.mse_loss(quantized_latents.detach(), latents, reduction='none')
         vq_loss =  embed_loss + self.commitment_loss_weight * commit_loss
         
         # Straight through gradient gradient from quantized flow trough latents
         quantized_latents = latents + (quantized_latents - latents).detach()
         
-        return vq_loss, quantized_latents.permute(0, 3, 1, 2).contiguous(), encoding_idxs # [B, D, H, W])
+        return vq_loss, quantized_latents.permute(0, 3, 1, 2).contiguous(), encoding_idxs.view(B,H,W) # [B, D, H, W])
         
 
 class VQVAE(BaseVAE):
@@ -99,7 +99,7 @@ class VQVAE(BaseVAE):
         return x_recon, vq_loss
     
     def loss(self, x_mean, vq_loss, x):
-        
+        vq_loss = vq_loss.sum(dim=(1,2,3)).mean()
         reconstruction_loss =  F.mse_loss(x_mean, x, reduction='none').sum(dim=(1,2,3)).mean()
         total_loss = reconstruction_loss + vq_loss
         loss_dict = {
@@ -128,7 +128,7 @@ class VQVAE(BaseVAE):
             np.ndarray: Quantized image. shape=(batch_size, 8, 8). Values in [0, n_embeddings]
         """
         x_nomralized = normalize_images(x) #normalized to -1 1
-        x = torch.tensor(x_nomralized).permute(0, 3, 1, 2).to(next(self.parameters()).device) # B C H,W
+        x = torch.tensor(x_nomralized, dtype = next(self.parameters()).dtype).permute(0, 3, 1, 2).to(next(self.parameters()).device) # B C H,W
         z_e = self.encode(x)
         _, _, z_index = self.vector_quantizer(z_e)
     

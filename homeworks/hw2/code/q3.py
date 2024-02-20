@@ -29,7 +29,7 @@ def q3(train_data, test_data, dset_id):
 
     """ YOUR CODE HERE """
     
-    hyperparams = {'lr': 1e-3, 'num_epochs': 10}
+    hyperparams = {'lr': 1e-4, 'num_epochs': 20}
     
     
     model = VQVAE(input_channels=3, K=128, D=256)
@@ -61,7 +61,7 @@ def q3(train_data, test_data, dset_id):
         optimizer=optimizer,
         checkpoint_path=f"homeworks/hw2/results/q3_{dset_id}",
         device=device,
-        debug_mode=True
+        debug_mode=False
     )
     
     vqvae_train_losses = train_losses[:, 0] #extract total loss
@@ -73,18 +73,20 @@ def q3(train_data, test_data, dset_id):
     B_train = train_data.shape[0]
     B_test = test_data.shape[0]
     
-    train_quantized = torch.tensor(model.quantize(train_data)).long()#.reshape(B_train, -1)
-    test_quantized  = torch.tensor(model.quantize(test_data)).long()#.reshape(B_train, -1)
+    # train_quantized = torch.tensor(model.quantize(train_data))[:,None].long()# [B_train,1, 8, 8]
+    # test_quantized  = torch.tensor(model.quantize(test_data))[:,None].long()#[B_test,1, 8, 8]
     
+    train_quantized = torch.tensor(quantize_in_batches(train_data, model))[:,None].long()
+    test_quantized =  torch.tensor(quantize_in_batches(test_data, model))[:,None].long()
     # sos_token = vqvae.n_embeddings
     # append sos token to the start of each sequence
     # train_quantized = torch.cat([sos_token * torch.ones(train_quantized.size(0), 1).long(), train_quantized], dim=1)
     # test_quantized = torch.cat([sos_token * torch.ones(test_quantized.size(0), 1).long(), test_quantized], dim=1)
       
-    train_loader_cnn = DataLoader(train_quantized, batch_size=256, shuffle=True)
-    test_loader_cnn = DataLoader(test_quantized, batch_size=256)
+    train_loader_cnn = DataLoader(TensorDataset(train_quantized), batch_size=256, shuffle=True)
+    test_loader_cnn = DataLoader(TensorDataset(test_quantized), batch_size=256)
     
-    pixel_cnn = PixelCNN((1, 32, 32), vqvae.n_embeddings, n_layers=5).to(device) #Q what is color size?
+    pixel_cnn = PixelCNN((1, 8, 8), model.n_embeddings, n_layers=5).to(device) #Q what is color size?
     optimizer = optim.Adam(pixel_cnn.parameters(), lr=1e-3)
     
     
@@ -97,13 +99,14 @@ def q3(train_data, test_data, dset_id):
       optimizer=optimizer,
       checkpoint_path=f"homeworks/hw2/results/q3_pixelcnn_{dset_id}",
       device=device,
-      debug_mode=True
+      debug_mode=False
     )
 
 
     # Sample from the pixelcnn
-    
-    samples = pixel_cnn.sample(100).cpu().detach().numpy() #cond = sos token?
+    transformer_train_losses = transformer_train_losses[:, 0] #extract total loss
+    transformer_test_losses = transformer_test_losses[:, 0] #extract total loss
+    samples = pixel_cnn.sample(100).squeeze() #B, h,w,c
     
     #pass through vae
     decoded_samples = model.decode_np(samples)
@@ -121,12 +124,12 @@ def q3(train_data, test_data, dset_id):
 
 
     return (
-      train_losses, 
-      test_losses, 
+      vqvae_train_losses, 
+      vqvae_test_losses, 
       transformer_train_losses,
       transformer_test_losses,
-      decoded_samples,
-      paired_treconstruct
+      (decoded_samples), #already reconstructed
+      process_images(paired_treconstruct)
     )
    
     
@@ -142,7 +145,16 @@ def process_images(images):
     return images
 def normalize_images(images):
     return (images / 255.0 - 0.5) * 2.0
-
+  
+def quantize_in_batches(data, model, batch_size=10000):
+    """Quantize data in batches using the provided VQ-VAE model."""
+    quantized_batches = []
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        quantized_batch = model.quantize(batch)
+        quantized_batches.append(quantized_batch)
+    # Use np.concatenate to merge the list of numpy arrays
+    return np.concatenate(quantized_batches, axis=0)
 
 
 
@@ -150,4 +162,4 @@ if __name__ == "__main__":
     # Load the data
     # q2_save_results('a', 1, q2_a)
     # q2_save_results('a', 2, q2_a)
-    q3_save_results(1, q3)
+    q3_save_results(2, q3)

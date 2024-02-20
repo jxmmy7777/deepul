@@ -28,8 +28,10 @@ def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer,
             for i, batch_inputs in enumerate(test_loader):
                 batch_inputs = batch_inputs[0].to(device)
                 outputs = model(batch_inputs)  # Model outputs a dictionary
-                loss_dict = model.loss(*outputs, x=batch_inputs)
-                
+                if isinstance(outputs, tuple):
+                    loss_dict = model.loss(*outputs, x=batch_inputs)
+                else:
+                    loss_dict = model.loss(outputs, x=batch_inputs)
                 test_loss = loss_dict['loss']
                 reconstruction_loss = loss_dict['reconstruction_loss']
                 KLD = loss_dict['KLD']
@@ -53,8 +55,10 @@ def train_and_evaluate(train_loader, test_loader, model, hyperparams, optimizer,
             batch_inputs = batch_inputs[0].to(device)
             optimizer.zero_grad()
             outputs = model(batch_inputs)
-            loss_dict = model.loss(*outputs, x=batch_inputs)
-                
+            if isinstance(outputs, tuple):
+                loss_dict = model.loss(*outputs, x=batch_inputs)
+            else:
+                loss_dict = model.loss(outputs, x=batch_inputs)
             loss = loss_dict['loss']
             reconstruction_loss = loss_dict['reconstruction_loss']
             KLD = loss_dict['KLD']
