@@ -32,9 +32,9 @@ def q1(train_data, test_data, part, dset_id):
     """ YOUR CODE HERE """
     
     if dset_id ==1:
-        hyperparams = {'lr': 1e-4, 'batch_size': 32, 'num_epochs': 10}
+        hyperparams = {'lr': 1e-3, 'batch_size': 32, 'num_epochs': 15}
     else:
-        hyperparams = {'lr': 1e-4, 'batch_size': 32, 'num_epochs': 10}
+        hyperparams = {'lr': 1e-3, 'batch_size': 32, 'num_epochs': 15}
     
     encoder = Encoder(2, 100, 2)
     decoder = Decoder(2, 100, 2)

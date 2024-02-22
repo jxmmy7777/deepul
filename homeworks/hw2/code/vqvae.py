@@ -101,6 +101,7 @@ class VQVAE(BaseVAE):
     
     def loss(self, x_mean, vq_loss, x):
         # vq_loss = vq_loss.sum(dim=(1,2,3)).mean()
+        
         vq_loss = vq_loss.sum(dim=(1,2,3)).mean() 
         reconstruction_loss =  F.mse_loss(x_mean, x, reduction='none').sum(dim=(1,2,3)).mean()
         total_loss = reconstruction_loss + vq_loss

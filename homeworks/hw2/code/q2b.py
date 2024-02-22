@@ -68,7 +68,6 @@ def q2_b(train_data, test_data, dset_id):
     
     
 
-
     # Sample from the model
     
     samples_w_noise =  model.sample_without_noise(size=100, device=device).cpu().detach().numpy()
@@ -104,3 +103,4 @@ if __name__ == "__main__":
     # q2_save_results('a', 1, q2_a)
     # q2_save_results('a', 2, q2_a)
     q2_save_results('b', 1, q2_b)
+    q2_save_results('b', 2, q2_b)
