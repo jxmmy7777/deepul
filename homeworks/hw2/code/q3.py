@@ -145,7 +145,7 @@ def process_images(images):
 def normalize_images(images):
     return (images / 255.0 - 0.5) * 2.0
   
-def quantize_in_batches(data, model, batch_size=10000):
+def quantize_in_batches(data, model, batch_size=5000):
     """Quantize data in batches using the provided VQ-VAE model."""
     quantized_batches = []
     for i in range(0, len(data), batch_size):
@@ -161,5 +161,5 @@ if __name__ == "__main__":
     # Load the data
     # q2_save_results('a', 1, q2_a)
     # q2_save_results('a', 2, q2_a)
-    q3_save_results(1, q3)
-    # q3_save_results(2, q3)
+    # q3_save_results(1, q3)
+    q3_save_results(2, q3)

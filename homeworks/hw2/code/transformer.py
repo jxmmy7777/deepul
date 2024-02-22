@@ -124,13 +124,19 @@ class Transformer(nn.Module):
         logits = self.lm_head(self.layer_norm(x))
         return logits, k_s, v_s
 
-    def loss(self, x):
-        x_in, targets = x[:, :-1], x[:, 1:] # make target a shifted version of the original
-        logits, _, _ = self(x_in)
+    def loss(self, logits,k,v, x):
+        targets = x[:, 1:] # make target a shifted version of the original
+        logits = logits[:, :-1]
         loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-1
         )
-        return loss
+        
+        loss_dict = {
+            "reconstruction_loss": torch.zeros(1,),
+            "KLD": torch.zeros(1,), #We named vq_loss as KLD for trainer
+            "loss": loss
+        }
+        return loss_dict
 
     @torch.no_grad()
     def generate(
