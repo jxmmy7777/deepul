@@ -81,7 +81,7 @@ class BaseVAE(nn.Module):
     @torch.no_grad()
     def sample_with_noise(self,z=None, size=100, device='cpu'):
         if z is None:
-            z = torch.randn(size, * self.z_dim, device=device)
+            z = torch.randn(size, *self.z_dim, device=device)
         mu, log_var = self.decode(z)  # Ensure your Decoder outputs both
         x_hat = self.reparameterize(mu, log_var)
         return x_hat
@@ -120,7 +120,7 @@ class VAE(BaseVAE):
         self.Decoder = Decoder
         self.loss_mode = loss_mode
         
-        self.z_dim = (Decoder.latent_dim)
+        self.z_dim = (Decoder.latent_dim,)
     
     def encode(self, x):
         return self.Encoder(x)
@@ -268,6 +268,7 @@ class ResidualBlock(nn.Module):
         residual = self.fc_residual(x)
   
         return x + residual
+ 
 class HVAE(BaseVAE):
     def __init__(
             self,
@@ -317,10 +318,9 @@ class HVAE(BaseVAE):
             nn.Conv2d(64, 12*2, 3, padding=1), # [12*2, 2, 2]
         )
         
-        self.prior_z_2_mu = ResidualCorrection(
-            latent_dim_1*latent_img_dim*latent_img_dim,
-            latent_dim_1*latent_img_dim*latent_img_dim
-            )
+        self.prior_z_2_mu = ResidualBlock(
+            latent_dim_1
+            ) # [latent_dim_1, 2, 2]
         
         self.Decoder = nn.Sequential(
             nn.ConvTranspose2d(12, 64, 3, padding=1), # [64, 2, 2]
@@ -361,8 +361,8 @@ class HVAE(BaseVAE):
         z2_residual_mu, z2_residual_logstd = self.encode_z2(x, z1)
         #
         # prior p(z_2 | z_1)
-        z1_flattened = z1.contiguous().view(-1, self.latent_dim_1 * 2 * 2)
-        z2_mu_prior = self.prior_z_2_mu(z1_flattened).view(-1, self.latent_dim_2, 2, 2)
+        # z1_flattened = z1.contiguous().view(-1, self.latent_dim_1 * 2 * 2)
+        z2_mu_prior = self.prior_z_2_mu(z1)#.view(-1, self.latent_dim_2, 2, 2)
         z2_log_var_prior = torch.zeros_like(z2_mu_prior)
         
         z2_mu = z2_residual_mu + z2_mu_prior
@@ -419,8 +419,8 @@ class HVAE(BaseVAE):
         # z2_residual_mu, z2_residual_logstd = self.encode_z2(x, z1)
         # #
         # prior p(z_2 | z_1)
-        z1_flattened = z1.contiguous().view(-1, self.latent_dim_1 * 2 * 2)
-        z2_mu_prior = self.prior_z_2_mu(z1_flattened).view(-1, self.latent_dim_2, 2, 2)
+        #z1_flattened = z1.contiguous().view(-1, self.latent_dim_1 * 2 * 2)
+        z2_mu_prior = self.prior_z_2_mu(z1)#.view(-1, self.latent_dim_2, 2, 2)
         
         mu, _ = self.decode(z2_mu_prior)  # Use only mu from your Decoder's output
         return mu

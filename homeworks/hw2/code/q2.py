@@ -30,11 +30,14 @@ def q2_a(train_data, test_data, dset_id):
 
     """ YOUR CODE HERE """
     
-  
-    hyperparams = {'lr': 1e-3, 'num_epochs': 10}
-    
-    encoder = ConvEncoder(latent_dim=16)
-    decoder = ConvDecoder(latent_dim=16)
+    if dset_id ==1:
+      hyperparams = {'lr': 1e-3, 'num_epochs': 10}
+      encoder = ConvEncoder(latent_dim=16)
+      decoder = ConvDecoder(latent_dim=16)
+    else:
+      hyperparams = {'lr': 1e-4, 'num_epochs': 10}
+      encoder = ConvEncoder(latent_dim=256)
+      decoder = ConvDecoder(latent_dim=256)
     model = VAE(encoder, decoder)
 
     
@@ -73,8 +76,10 @@ def q2_a(train_data, test_data, dset_id):
     # Reconstruct samples
     test_samples = test_tensor[:50].to(device)
     #should we sample or not?
-    reconstruct_samples = model.sample_reconstruct(test_samples,device=device).cpu().detach().numpy()
-    paired_treconstruct = np.concatenate([test_samples.cpu().numpy(), reconstruct_samples], axis=0)
+    paired_treconstruct = np.zeros((100, 3, 32, 32))
+    reconstruct_samples = model.sample_reconstruct(test_samples).cpu().detach().numpy()
+    paired_treconstruct[::2] = test_samples.cpu().detach().numpy()
+    paired_treconstruct[1::2] = reconstruct_samples
     #reshape to pair pair?
     
     #Interpolate samples

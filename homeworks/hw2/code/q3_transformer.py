@@ -10,6 +10,7 @@ from functools import partial
 
 from vqvae import VQVAE
 from pixelcnn import PixelCNN
+from transformer import *
 def q3(train_data, test_data, dset_id):
     """
     train_data: An (n_train, 32, 32, 3) uint8 numpy array of color images with values in [0, 255]
@@ -68,36 +69,43 @@ def q3(train_data, test_data, dset_id):
     vqvae_test_losses = test_losses[:, 0] #extract total loss
     
     
-    #--------------------------------------Train PixelCNN prior ------------------------------------
+    #--------------------------------------Train Transformer prior ------------------------------------
     # quantized the images using the vqvae
-    # B_train = train_data.shape[0]
-    # B_test = test_data.shape[0]
+    VQ_S = 8
+    tf_config = TransformerConfig(
+        vocab_size=model.n_embeddings + 1,
+        block_size=VQ_S**2 + 1,
+        n_layer=4,
+        n_embd=256,
+        n_head=4,
+    )
     
-    # train_quantized = torch.tensor(model.quantize(train_data))[:,None].long()# [B_train,1, 8, 8]
-    # test_quantized  = torch.tensor(model.quantize(test_data))[:,None].long()#[B_test,1, 8, 8]
+    B_train = train_data.shape[0]
+    B_test = test_data.shape[0]
     
-    train_quantized = torch.tensor(quantize_in_batches(train_data, model))[:,None].long()
-    test_quantized =  torch.tensor(quantize_in_batches(test_data, model))[:,None].long()
-    # sos_token = vqvae.n_embeddings
+    train_quantized = torch.tensor(model.quantize(train_data))[:,None].long().reshape(B_train,-1)# [B_train,1, 8, 8]
+    test_quantized  = torch.tensor(model.quantize(test_data))[:,None].long().reshape(B_test,-1)#[B_test,1, 8, 8]
+    
+    sos_token = model.n_embeddings
     # append sos token to the start of each sequence
-    # train_quantized = torch.cat([sos_token * torch.ones(train_quantized.size(0), 1).long(), train_quantized], dim=1)
-    # test_quantized = torch.cat([sos_token * torch.ones(test_quantized.size(0), 1).long(), test_quantized], dim=1)
+    train_quantized = torch.cat([sos_token * torch.ones(train_quantized.size(0), 1).long(), train_quantized], dim=1)
+    test_quantized = torch.cat([sos_token * torch.ones(test_quantized.size(0), 1).long(), test_quantized], dim=1)
       
     train_loader_cnn = DataLoader(TensorDataset(train_quantized), batch_size=256, shuffle=True)
     test_loader_cnn = DataLoader(TensorDataset(test_quantized), batch_size=256)
     
-    pixel_cnn = PixelCNN((1, 8, 8), model.n_embeddings, n_layers=5).to(device) #Q what is color size?
-    optimizer = optim.Adam(pixel_cnn.parameters(), lr=1e-3)
+    transformer_model = Transformer(tf_config).cuda() #Q what is color size?
+    optimizer = optim.Adam(transformer_model.parameters(), lr=1e-3)
     
     
     
     transformer_train_losses, transformer_test_losses = train_and_evaluate(
       train_loader=train_loader_cnn,
       test_loader=test_loader_cnn,
-      model=pixel_cnn,
+      model=transformer_model,
       hyperparams=hyperparams,
       optimizer=optimizer,
-      checkpoint_path=f"homeworks/hw2/results/q3_pixelcnn_{dset_id}",
+      checkpoint_path=f"homeworks/hw2/results/q3_transformer_{dset_id}",
       device=device,
       debug_mode=False
     )
@@ -106,8 +114,10 @@ def q3(train_data, test_data, dset_id):
     # Sample from the pixelcnn
     transformer_train_losses = transformer_train_losses[:, 0] #extract total loss
     transformer_test_losses = transformer_test_losses[:, 0] #extract total loss
-    samples = pixel_cnn.sample(100).squeeze() #B, h,w,c
     
+    idx = torch.zeros(100, 1).long().cuda() * sos_token
+    samples, _ = transformer_model.generate(idx) #B, h,w,c
+    samples = samples[:, 1:].view(-1, 8, 8).detach().cpu().numpy()
     #pass through vae
     decoded_samples = model.decode_np(samples)
     
@@ -145,7 +155,7 @@ def process_images(images):
 def normalize_images(images):
     return (images / 255.0 - 0.5) * 2.0
   
-def quantize_in_batches(data, model, batch_size=5000):
+def quantize_in_batches(data, model, batch_size=10000):
     """Quantize data in batches using the provided VQ-VAE model."""
     quantized_batches = []
     for i in range(0, len(data), batch_size):
@@ -161,5 +171,5 @@ if __name__ == "__main__":
     # Load the data
     # q2_save_results('a', 1, q2_a)
     # q2_save_results('a', 2, q2_a)
-    # q3_save_results(1, q3)
+    q3_save_results(1, q3)
     q3_save_results(2, q3)
