@@ -16,11 +16,12 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from train_utils import *
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
 class Generator(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(Generator, self).__init__()
+        self.input_dim = input_dim
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.LeakyReLU(negative_slope=0.2),
@@ -67,14 +68,14 @@ def q1_a(train_data):
 
     """ YOUR CODE HERE """
 
-    hyperparams = {'lr': 1e-4, 'num_epochs': 100}
+    hyperparams = {'lr': 1e-3, 'num_epochs': 500, "g_lr": 1e-4}
    
     generator = Generator(1, 128, 1)
     discriminator = Discriminator(1, 128, 1)
 
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
     # Create DataLoader without additional transformations
-    train_loader = DataLoader((train_tensor), batch_size=512, shuffle=True)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=1000, shuffle=True)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,7 +85,7 @@ def q1_a(train_data):
     #optimizer
     #Training optimizer
     d_optimizer = optim.Adam(discriminator.parameters(), lr=hyperparams["lr"])
-    g_optimizer = optim.Adam(generator.parameters(), lr=hyperparams["lr"])
+    g_optimizer = optim.Adam(generator.parameters(), lr=hyperparams["g_lr"])
 
     g_loss_fn = nn.BCELoss()
     d_loss_fn = nn.BCELoss()
@@ -97,8 +98,9 @@ def q1_a(train_data):
         g_optimizer=g_optimizer,
         d_optimizer=d_optimizer,
         # checkpoint_path=f"homeworks/hw3/results/q1a",
+        epochs = hyperparams["num_epochs"],
         device=device,
-        debug_mode=False
+        debug_mode=False,
     )
     
     samples, samples_interpolate, discriminator_output = evaluate_generator_discriminator(generator, discriminator, device)

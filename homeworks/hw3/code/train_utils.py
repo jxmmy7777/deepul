@@ -55,11 +55,11 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
         d_epoch_loss = 0
         batch_count = 0
 
-        for real_data in dataloader:
+        for real_data  in dataloader:
             if debug_mode and batch_count >= debug_batches:
                 break
-
-            real_data = real_data.to(device)
+            real_data = real_data[0].to(device)
+    
             batch_size = real_data.shape[0]
             
             # -----------------
@@ -81,8 +81,6 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
             real_output = discriminator(real_data)
             real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
             
-            z = torch.randn(*real_data.shape,device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
-            fake_data = generator(z)
             fake_output = discriminator(fake_data.detach())
             fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
             d_loss = (real_loss + fake_loss)/2
