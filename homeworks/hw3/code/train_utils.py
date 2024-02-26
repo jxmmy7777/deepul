@@ -85,7 +85,7 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
             fake_data = generator(z)
             fake_output = discriminator(fake_data.detach())
             fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
-            d_loss = real_loss + fake_loss
+            d_loss = (real_loss + fake_loss)/2
             d_loss.backward()
             d_optimizer.step()
 

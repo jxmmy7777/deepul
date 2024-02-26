@@ -67,7 +67,7 @@ def q1_a(train_data):
 
     """ YOUR CODE HERE """
 
-    hyperparams = {'lr': 1e-3, 'num_epochs': 10}
+    hyperparams = {'lr': 1e-4, 'num_epochs': 100}
    
     generator = Generator(1, 128, 1)
     discriminator = Discriminator(1, 128, 1)
