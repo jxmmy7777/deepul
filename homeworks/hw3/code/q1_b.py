@@ -49,15 +49,15 @@ class Discriminator(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-def q1_a(train_data):
+def q1_b(train_data):
     """
     train_data: An (20000, 1) numpy array of floats in [-1, 1]
 
     Returns
     - a (# of training iterations,) numpy array of discriminator losses evaluated every minibatch
     - a numpy array of size (5000,) of samples drawn from your model at epoch #1
-    - a numpy array of size (1000,) linearly spaced from [-1, 1]; hint: np.linspace
-    - a numpy array of size (1000,), corresponding to the discriminator output (after sigmoid) 
+    - a numpy array of size (100,) linearly spaced from [-1, 1]; hint: np.linspace
+    - a numpy array of size (100,), corresponding to the discriminator output (after sigmoid) 
         at each location in the previous array at epoch #1
 
     - a numpy array of size (5000,) of samples drawn from your model at the end of training
@@ -87,7 +87,7 @@ def q1_a(train_data):
     d_optimizer = optim.Adam(discriminator.parameters(), lr=hyperparams["lr"])
     g_optimizer = optim.Adam(generator.parameters(), lr=hyperparams["g_lr"])
 
-    g_loss_fn = nn.BCELoss()
+    g_loss_fn = non_saturating_loss
     d_loss_fn = nn.BCELoss()
     geneartor_loss, discriminator_loss, samples_ep1, samples_interpolate_ep1, discriminator_output_ep1 = train_gan(
         dataloader=train_loader,
@@ -106,7 +106,6 @@ def q1_a(train_data):
     samples, samples_interpolate, discriminator_output = evaluate_generator_discriminator(generator, discriminator, device)
     
     
-    
     return (
         discriminator_loss,
         samples_ep1,
@@ -119,4 +118,4 @@ def q1_a(train_data):
 
 
 if __name__ == "__main__":
-   q1_save_results('a', q1_a)
+   q1_save_results('b', q1_b)

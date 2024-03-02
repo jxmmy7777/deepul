@@ -24,7 +24,7 @@ def evaluate_generator_discriminator(generator, discriminator, device):
     
     return samples, linear_samples, discriminator_output
 
-def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_loss_fn, dataloader, device, epochs=100, debug_mode=False):
+def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_loss_fn, dataloader, device, epochs=100, debug_mode=False, wgan_gp = False, n_critic = 1, g_scheduler = None, d_scheduler = None):
     """
     Train a GAN consisting of a generator and discriminator with an option for a quick debug iteration.
 
@@ -72,20 +72,28 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
             g_loss = g_loss_fn(output, torch.ones_like(output, device=device))
             g_loss.backward()
             g_optimizer.step()
+            if g_scheduler is not None:
+                g_scheduler.step()
 
             # ---------------------
             #  Train Discriminator
             # ---------------------
-
-            d_optimizer.zero_grad()
-            real_output = discriminator(real_data)
-            real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
-            
-            fake_output = discriminator(fake_data.detach())
-            fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
-            d_loss = (real_loss + fake_loss)/2
-            d_loss.backward()
-            d_optimizer.step()
+            for i in range(n_critic):
+                d_optimizer.zero_grad()
+                real_output = discriminator(real_data)
+                real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
+                
+                fake_output = discriminator(fake_data.detach())
+                fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
+                d_loss = (real_loss + fake_loss)
+                
+                if wgan_gp:
+                    #add gradient penalty
+                    pass
+                d_loss.backward()
+                d_optimizer.step()
+                if d_scheduler is not None:
+                    d_scheduler.step()
 
        
            
@@ -104,3 +112,18 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
             print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
 
     return generator_losses, discriminator_losses, samples, samples_interpolate, discriminator_output
+def gradient_penalty(real_data, fake_data, discriminator):
+    epsilon = torch.rand(real_data.shape[0], 1, 1, 1).to(real_data.device)
+    interpolate_data = epsilon * real_data + (1 - epsilon) * fake_data
+    interpolate_data.requires_grad = True
+    d_interpolate = discriminator(interpolate_data)
+    gradients = torch.autograd.grad(outputs=d_interpolate,
+                                    inputs=interpolate_data,
+                                    grad_outputs=torch.ones_like(d_interpolate),
+                                    create_graph=True, 
+                                    retain_graph=True)[0]
+    #batch, channel, height, width
+    gradients = gradients.view(gradients.shape[0], -1)
+    gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-12)
+    gradient_penalty = ((gradients_norm - 1) ** 2).mean()
+    return gradient_penalty
