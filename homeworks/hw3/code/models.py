@@ -46,7 +46,7 @@ class Upsample_Conv2d(nn.Module):
     def __init__(self, in_dim, out_dim, block_size=2, kernel_size=(3, 3), stride=1, padding=1):
         super(Upsample_Conv2d, self).__init__()
         self.depth_to_space = DepthToSpace(block_size=block_size)
-        self.conv = nn.Conv2d(in_dim * block_size * block_size, out_dim, kernel_size, stride, padding)
+        self.conv = nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding)
 
     def forward(self, x):
         x = torch.cat([x, x, x, x], dim=1)
@@ -59,11 +59,14 @@ class Downsample_Conv2d(nn.Module):
         super(Downsample_Conv2d, self).__init__()
         self.space_to_depth = SpaceToDepth(block_size=block_size)
         # Adjust in_dim according to space_to_depth output channel expansion
-        self.conv = nn.Conv2d(in_dim * block_size * block_size, out_dim, kernel_size, stride, padding)
+        self.conv = nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding)
 
     def forward(self, x):
         x = self.space_to_depth(x)
-        x = torch.sum(x.chunk(4, dim=1)) / 4.0
+        x_chunks = x.chunk(4, dim=1)
+        summed_chunks = torch.stack(x_chunks).sum(dim=0)
+
+        x = summed_chunks/ 4.0
         x = self.conv(x)
         return x
 
@@ -91,7 +94,24 @@ class ResnetBlockUp(nn.Module):
         residual = self.residual_conv_up(x)
         
         return residual + shortcut
+class ResBlock(nn.Module):
+    def __init__(self, in_dim = 256, n_filters=256, kernel_size=(3, 3)):
+        super(ResBlock, self).__init__()
+        self.relu1 = nn.ReLU()
+        self.conv1 = nn.Conv2d(in_dim, n_filters, kernel_size, padding=1)
 
+        self.relu2 = nn.ReLU()
+        self.conv2 = nn.Conv2d(n_filters, n_filters, kernel_size, padding=1)
+    def forward(self, x):
+        shortcut = x
+        x = self.relu1(x)
+        x = self.conv1(x)
+        
+        x = self.relu2(x)
+        x = self.conv2(x)
+        
+        return x + shortcut
+    
 class ResnetBlockDown(nn.Module):
     def __init__(self, in_dim=256, n_filters=256, kernel_size=(3, 3)):
         super(ResnetBlockDown, self).__init__()
@@ -118,8 +138,8 @@ class Generator_SNGAN(nn.Module):
     def __init__(self, z_dim=128, n_filters=128, image_channels=3):
         super(Generator_SNGAN, self).__init__()
         self.z_dim = z_dim
-        self.initial_linear = nn.Linear(z_dim, 4*4*n_filters)
-        self.block1 = ResnetBlockUp(z_dim, n_filters)
+        self.initial_linear = nn.Linear(z_dim, 4*4*256)
+        self.block1 = ResnetBlockUp(256, n_filters)
         self.block2 = ResnetBlockUp(n_filters, n_filters)
         self.block3 = ResnetBlockUp(n_filters, n_filters)
         self.bn = nn.BatchNorm2d(n_filters)
@@ -129,7 +149,7 @@ class Generator_SNGAN(nn.Module):
 
     def forward(self, z):
         z = self.initial_linear(z)
-        z = z.view(-1, 256, 4, 4)  # Reshape z to the shape expected by the first ResBlock
+        z = z.view(z.shape[0], 256, 4, 4)  # Reshape z to the shape expected by the first ResBlock
         z = self.block1(z)
         z = self.block2(z)
         z = self.block3(z)
@@ -138,6 +158,9 @@ class Generator_SNGAN(nn.Module):
         z = self.final_conv(z)
         output = self.tanh(z)
         return output
+    def sample(self, n_samples, device):
+        z = torch.randn(n_samples, self.z_dim, device=device)
+        return self.forward(z)
     
 class Discriminator(nn.Module):
     def __init__(self, n_filters=128):

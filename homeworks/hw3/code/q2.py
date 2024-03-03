@@ -22,6 +22,8 @@ from models import *
 
 def generator_loss(discriminator_output, dummy):
     return -discriminator_output.mean()
+def discriminator_loss_fn(discriminator_output_real, discriminator_output_fake):
+    return -discriminator_output_real.mean() + discriminator_output_fake.mean()
 
 def q2(train_data):
     """
@@ -34,7 +36,10 @@ def q2(train_data):
     """
 
     """ YOUR CODE HERE """
-    
+    hyperparams = {
+        "num_epochs":10
+        
+    }
     generator = Generator_SNGAN(n_filters=128)
     discriminator = Discriminator(n_filters=128)
 
@@ -49,6 +54,8 @@ def q2(train_data):
 
     #optimizer
     #Training optimizer
+    total_steps = hyperparams["num_epochs"] * (len(train_loader) / 128)
+
     lambda_lr = lambda step: 1 - step / total_steps
 
     #2𝑒−4 ,  𝛽1=0 ,  𝛽2=0.9 ,  𝜆=10 ,
@@ -59,7 +66,7 @@ def q2(train_data):
     g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=lambda_lr)
 
     g_loss_fn = generator_loss
-    d_loss_fn = nn.BCELoss()
+    d_loss_fn = discriminator_loss_fn
     geneartor_loss, discriminator_loss, samples_ep1, samples_interpolate_ep1, discriminator_output_ep1 = train_gan(
         dataloader=train_loader,
         generator=generator,
@@ -73,7 +80,7 @@ def q2(train_data):
         # checkpoint_path=f"homeworks/hw3/results/q1a",
         epochs = hyperparams["num_epochs"],
         device=device,
-        debug_mode=False,
+        debug_mode=True,
         wgan_gp = True
     )
     
@@ -87,3 +94,6 @@ def q2(train_data):
 
 
     return losses, samples
+
+if __name__ == "__main__":
+   q2_save_results(q2)

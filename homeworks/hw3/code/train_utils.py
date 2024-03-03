@@ -66,8 +66,8 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
             #  Train Generator
             # -----------------
             g_optimizer.zero_grad()
-            z = torch.randn(*real_data.shape,device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
-            fake_data = generator(z)
+            # z = torch.randn((batch_size,*generator.shape),device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
+            fake_data = generator.sample(batch_size, device = device)
             output = discriminator(fake_data)
             g_loss = g_loss_fn(output, torch.ones_like(output, device=device))
             g_loss.backward()
@@ -81,15 +81,19 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
             for i in range(n_critic):
                 d_optimizer.zero_grad()
                 real_output = discriminator(real_data)
-                real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
                 
                 fake_output = discriminator(fake_data.detach())
-                fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
-                d_loss = (real_loss + fake_loss)
+                
                 
                 if wgan_gp:
                     #add gradient penalty
-                    pass
+                    d_loss = d_loss_fn(real_output, fake_output)
+                    gp_loss = gradient_penalty(real_data, fake_data, discriminator)
+                    d_loss += gp_loss
+                else:
+                    real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
+                    fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
+                    d_loss = (real_loss + fake_loss)
                 d_loss.backward()
                 d_optimizer.step()
                 if d_scheduler is not None:
@@ -114,7 +118,7 @@ def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_l
     return generator_losses, discriminator_losses, samples, samples_interpolate, discriminator_output
 def gradient_penalty(real_data, fake_data, discriminator):
     epsilon = torch.rand(real_data.shape[0], 1, 1, 1).to(real_data.device)
-    interpolate_data = epsilon * real_data + (1 - epsilon) * fake_data
+    interpolate_data = (epsilon * real_data + (1 - epsilon) * fake_data).clone().detach()
     interpolate_data.requires_grad = True
     d_interpolate = discriminator(interpolate_data)
     gradients = torch.autograd.grad(outputs=d_interpolate,
