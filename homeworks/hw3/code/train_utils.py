@@ -87,7 +87,7 @@ def train_gan_q1(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, 
                 if wgan_gp:
                     #add gradient penalty
                     d_loss = d_loss_fn(real_output, fake_output)
-                    gp_loss = gradient_penalty(real_data, fake_data, discriminator)
+                    gp_loss = gradient_penalty(real_data, fake_data, discriminator)*10
                     d_loss += gp_loss
                 else:
                     real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
@@ -115,6 +115,7 @@ def train_gan_q1(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, 
             print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
 
     return generator_losses, discriminator_losses, samples, samples_interpolate, discriminator_output
+
 def gradient_penalty(real_data, fake_data, discriminator):
     epsilon = torch.rand(real_data.shape[0], 1, 1, 1).to(real_data.device)
     interpolate_data = (epsilon * real_data + (1 - epsilon) * fake_data).clone().detach()
@@ -127,6 +128,6 @@ def gradient_penalty(real_data, fake_data, discriminator):
                                     retain_graph=True)[0]
     #batch, channel, height, width
     gradients = gradients.view(gradients.shape[0], -1)
-    gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-12)
+    gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-12) #Enforce lipschitz constraint
     gradient_penalty = ((gradients_norm - 1) ** 2).mean()
     return gradient_penalty

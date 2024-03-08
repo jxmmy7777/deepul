@@ -339,7 +339,7 @@ class HVAE(BaseVAE):
         
         self.z_dim = (latent_dim_2, latent_img_dim, latent_img_dim)
         
-    def encode_z1(self, x):
+    def encode_z1(self, x):  #residual p(z1|x)
         encodede_x = self.Encoder_z1(x) #can input zeros? of z1
         z1_mu, z1_log_var = encodede_x[:, :self.latent_dim_1], encodede_x[:, self.latent_dim_1:]
         return z1_mu, z1_log_var

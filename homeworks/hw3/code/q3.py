@@ -108,17 +108,23 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, 
         if debug_mode:
             print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
     return generator_losses, discriminator_losses, gp_losses
-def q2(train_data):
+def q3a(train_data, val_data, reconstruct_data):
     """
     train_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
+    val_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
+    reconstruct_data: An (100, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]. To be used for reconstruction
 
     Returns
-    - a (# of training iterations,) numpy array of WGAN critic train losses evaluated every minibatch
-    - a (1000, 32, 32, 3) numpy array of samples from your model in [0, 1]. 
-        The first 100 will be displayed, and the rest will be used to calculate the Inception score. 
+    - a (# of training iterations,) numpy array of the discriminator train losses evaluated every minibatch
+    - None or a (# of training iterations,) numpy array of the perceptual train losses evaluated every minibatch
+    - a (# of training iterations,) numpy array of the l2 reconstruction evaluated every minibatch
+    - a (# of epochs + 1,) numpy array of l2 reconstruction loss evaluated once at initialization and after each epoch on the val_data
+    - a (100, 32, 32, 3) numpy array of reconstructions from your model in [0, 1] on the reconstruct_data.  
     """
 
     """ YOUR CODE HERE """
+
+    
     hyperparams = {
         "num_epochs":10
         
@@ -128,7 +134,7 @@ def q2(train_data):
     discriminator = Discriminator(n_filters=128)
 
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
-    train_tensor = (train_tensor *2) -1 #nomralized to -1 1
+    # train_tensor = train_tensor #nomralized to -1 1
     # Create DataLoader without additional transformations
     train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
 
@@ -174,7 +180,7 @@ def q2(train_data):
     
     samples = generator.sample(1000, device = device).permute(0, 2, 3, 1).cpu().detach().numpy()
     #unormallize
-    samples = samples/2 + 0.5 
+    samples = samples 
     #plot the losses curve
     # Creating a figure for subplots
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))  # 2 rows, 1 column
@@ -201,7 +207,8 @@ def q2(train_data):
     
     #Fréchet inception distance (bonus, 5pts)
     
-    return discriminator_loss, samples
+    return discriminator_losses, l_pips_losses, l2_recon_train, l2_recon_test, reconstructions
+    
 
 if __name__ == "__main__":
-   q2_save_results(q2)
+   q3_save_results(q3a, "a") # with pips
