@@ -97,13 +97,10 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, 
                 discriminator_losses.append(d_loss.item())
                 gp_losses.append(gp_loss.item())
 
-            
-            d_epoch_loss += d_loss.item()
-            g_epoch_loss += g_loss.item()
 
             batch_count += 1
 
-            generator_losses.append(g_epoch_loss)
+            generator_losses.append(g_loss.item())
           
         if debug_mode:
             print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
@@ -120,7 +117,7 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
     hyperparams = {
-        "num_epochs":10
+        "num_epochs":20
         
     }
     n_critic = 5
@@ -130,7 +127,7 @@ def q2(train_data):
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
     train_tensor = (train_tensor *2) -1 #nomralized to -1 1
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=256, shuffle=True)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

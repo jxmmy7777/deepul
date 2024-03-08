@@ -133,21 +133,7 @@ class ResnetBlockDown(nn.Module):
         residual = self.residual_conv_down(x)
         
         return residual + shortcut
-class ResidualBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.BatchNorm2d(dim),
-            nn.ReLU(),
-            nn.Conv2d(dim, dim, 3, 1, 1),
-            nn.BatchNorm2d(dim),
-            nn.ReLU(),
-            nn.Conv2d(dim, dim, 1)
-        )
 
-    def forward(self, x):
-        return x + self.net(x)
-    
 class Generator_SNGAN(nn.Module):
     def __init__(self, z_dim=128, n_filters=128, image_channels=3):
         super(Generator_SNGAN, self).__init__()
@@ -196,4 +182,5 @@ class Discriminator(nn.Module):
         x = self.global_sum_pooling(x) #shape (batch_size, n_filters, 1, 1)
         x = x.view(x.size(0), -1)  # Flatten
         output = self.final_linear(x)
-        return output
+        
+        return output /200 #scale the output of discirminator

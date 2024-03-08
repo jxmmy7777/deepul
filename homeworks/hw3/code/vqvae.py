@@ -1,3 +1,5 @@
+import torch
+import torch.nn as nn
 class ResidualBlock(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -89,6 +91,7 @@ class VectorQuantizedVAE(nn.Module):
             return self.decoder(latents).permute(0, 2, 3, 1).cpu().numpy() * 0.5 + 0.5
 
     def forward(self, x):
+        x = 2 * x - 1
         z = self.encoder(x)
         e, e_st, _ = self.codebook(z)
         x_tilde = self.decoder(e_st)
@@ -98,7 +101,6 @@ class VectorQuantizedVAE(nn.Module):
         return x_tilde, diff1 + diff2
 
     def loss(self, x):
-        x = 2 * x - 1
         x_tilde, diff = self(x)
         recon_loss = F.mse_loss(x_tilde, x)
         loss = recon_loss + diff
