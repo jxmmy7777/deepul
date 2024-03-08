@@ -8,11 +8,10 @@ from tqdm import tqdm
 
 adversarial_loss = torch.nn.BCELoss()
 
-def evaluate_generator_discriminator(generator, discriminator, device):
+def evaluate_generator_discriminator(generator, discriminator,device, sample_size = 1000):
     #return samples drawn from the generator and the discriminator's predictions on them
      #samples
-    z = torch.randn(5000, 1, device=device, dtype=torch.float32)
-    samples = generator(z).detach().cpu().numpy().flatten()
+    samples = generator.sample(sample_size, device).detach().cpu().numpy().flatten()
     
     #linear spaced
     z_interpolate = torch.linspace(-1, 1, 1000).reshape(-1, 1).to(device)
@@ -24,7 +23,7 @@ def evaluate_generator_discriminator(generator, discriminator, device):
     
     return samples, linear_samples, discriminator_output
 
-def train_gan(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_loss_fn, dataloader, device, epochs=100, debug_mode=False, wgan_gp = False, n_critic = 1, g_scheduler = None, d_scheduler = None):
+def train_gan_q1(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_loss_fn, dataloader, device, epochs=100, debug_mode=False, wgan_gp = False, n_critic = 1, g_scheduler = None, d_scheduler = None):
     """
     Train a GAN consisting of a generator and discriminator with an option for a quick debug iteration.
 

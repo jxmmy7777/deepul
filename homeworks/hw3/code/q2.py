@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import deepul.pytorch_util as ptu
 import numpy as np
@@ -24,7 +23,93 @@ def generator_loss(discriminator_output, dummy):
     return -discriminator_output.mean()
 def discriminator_loss_fn(discriminator_output_real, discriminator_output_fake):
     return -discriminator_output_real.mean() + discriminator_output_fake.mean()
+def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_loss_fn, dataloader, device, epochs=100, debug_mode=False, wgan_gp = False, n_critic = 1, g_scheduler = None, d_scheduler = None):
+    """
+    Train a GAN consisting of a generator and discriminator with an option for a quick debug iteration.
 
+    Args:
+    - generator: The generator model.
+    - discriminator: The discriminator model.
+    - g_optimizer: Optimizer for the generator.
+    - d_optimizer: Optimizer for the discriminator.
+    - g_loss_fn: Loss function for the generator.
+    - d_loss_fn: Loss function for the discriminator.
+    - dataloader: DataLoader for the real data.
+    - device: The device to train on ('cuda' or 'cpu').
+    - epochs: Number of epochs to train for.
+    - debug_mode: If True, runs a single epoch with a limited number of batches for debugging.
+
+    Returns:
+    - A tuple of (generator_losses, discriminator_losses) capturing the loss history.
+    """
+
+    generator_losses = []
+    discriminator_losses = []
+
+    debug_epochs = 1 if debug_mode else epochs
+    debug_batches = 10
+
+    for epoch in tqdm(range(debug_epochs), desc="Epochs"):
+        g_epoch_loss = 0
+        d_epoch_loss = 0
+        batch_count = 0
+
+        for real_data  in dataloader:
+            if debug_mode and batch_count >= debug_batches:
+                break
+            real_data = real_data[0].to(device)
+    
+            batch_size = real_data.shape[0]
+            
+            # -----------------
+            #  Train Generator
+            # -----------------
+            g_optimizer.zero_grad()
+            # z = torch.randn((batch_size,*generator.shape),device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
+            fake_data = generator.sample(batch_size, device = device)
+            output = discriminator(fake_data)
+            g_loss = g_loss_fn(output, torch.ones_like(output, device=device))
+            g_loss.backward()
+            g_optimizer.step()
+            if g_scheduler is not None:
+                g_scheduler.step()
+
+            # ---------------------
+            #  Train Discriminator
+            # ---------------------
+            for i in range(n_critic):
+                d_optimizer.zero_grad()
+                real_output = discriminator(real_data)
+                
+                fake_output = discriminator(fake_data.detach())
+                
+                
+                if wgan_gp:
+                    #add gradient penalty
+                    d_loss = d_loss_fn(real_output, fake_output)
+                    gp_loss = gradient_penalty(real_data, fake_data, discriminator)
+                    d_loss += gp_loss
+                else:
+                    real_loss = d_loss_fn(real_output, torch.ones_like(real_output, device=device))
+                    fake_loss = d_loss_fn(fake_output, torch.zeros_like(fake_output, device=device))
+                    d_loss = (real_loss + fake_loss)
+                d_loss.backward()
+                d_optimizer.step()
+                if d_scheduler is not None:
+                    d_scheduler.step()
+
+            
+            d_epoch_loss += d_loss.item()
+            g_epoch_loss += g_loss.item()
+
+            batch_count += 1
+
+        generator_losses.append(g_epoch_loss / batch_count)
+        discriminator_losses.append(d_epoch_loss / batch_count)
+        
+        if debug_mode:
+            print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
+    return discriminator_losses
 def q2(train_data):
     """
     train_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
@@ -49,12 +134,13 @@ def q2(train_data):
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     generator = generator.to(device)
     discriminator = discriminator.to(device)
 
     #optimizer
     #Training optimizer
-    total_steps = hyperparams["num_epochs"] * (len(train_loader) / 128)
+    total_steps = hyperparams["num_epochs"] * (len(train_loader))
 
     lambda_lr = lambda step: 1 - step / total_steps
 
@@ -67,7 +153,8 @@ def q2(train_data):
 
     g_loss_fn = generator_loss
     d_loss_fn = discriminator_loss_fn
-    geneartor_loss, discriminator_loss, samples_ep1, samples_interpolate_ep1, discriminator_output_ep1 = train_gan(
+    
+    discriminator_loss= train_gan_q2(
         dataloader=train_loader,
         generator=generator,
         discriminator=discriminator,
@@ -80,20 +167,13 @@ def q2(train_data):
         # checkpoint_path=f"homeworks/hw3/results/q1a",
         epochs = hyperparams["num_epochs"],
         device=device,
-        debug_mode=True,
+        debug_mode=False,
         wgan_gp = True
     )
     
+    samples = generator.sample(1000, device = device).permute(0, 2, 3, 1).cpu().detach().numpy()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-   
-    #optimizer
-    #Training optimizer
-    optimizer = optim.Adam(model.parameters(), lr=hyperparams["lr"])
-
-
-    return losses, samples
+    return discriminator_loss, samples
 
 if __name__ == "__main__":
    q2_save_results(q2)
