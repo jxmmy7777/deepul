@@ -156,7 +156,7 @@ def q3a(train_data, val_data, reconstruct_data):
     """
 
     """ YOUR CODE HERE """
-    hyperparams = {'lr': 1e-4, 'num_epochs': 15}
+    hyperparams = {'lr': 1e-4, 'num_epochs': 30}
     
     vqvae = VectorQuantizedVAE(code_size=1024, code_dim=256)
     discriminator = Discriminator()
@@ -209,7 +209,7 @@ def q3a(train_data, val_data, reconstruct_data):
     recon_tensor = recon_tensor.to(device)
     reconstrcutions, _ = vqvae.forward(recon_tensor)
     reconstrcutions = reconstrcutions.permute(0, 2, 3, 1).detach().cpu().numpy()  # Change to (N,H,W,C) for numpy
-    reconstrcutions = (reconstrcutions * 0.5) + 0.5  # Scal
+    reconstrcutions = (reconstrcutions )   # Scal
 
     
     return discriminator_losses, l_pips_losses, l2_recon_train, l2_recon_test, reconstrcutions

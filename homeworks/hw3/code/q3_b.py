@@ -280,7 +280,7 @@ def q3b(train_data, val_data, reconstruct_data):
         # checkpoint_path=f"homeworks/hw3/results/q1a",
         epochs = hyperparams["num_epochs"],
         device=device,
-        debug_mode=True,
+        debug_mode=False,
     )
     
     

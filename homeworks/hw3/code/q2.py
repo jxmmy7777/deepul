@@ -72,6 +72,8 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
            
             g_loss.backward()
             g_optimizer.step()
+            if g_scheduler is not None:
+                g_scheduler.step()
             # ---------------------
             #  Train Discriminator
             # ---------------------
@@ -83,7 +85,7 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
                 
                 
                 d_loss = -torch.mean(real_output) + torch.mean(fake_output)
-                gp_loss = gradient_penalty(real_data, fake_data, discriminator)*10
+                gp_loss = gradient_penalty(real_data, fake_data, discriminator) * 10
                 d_loss += gp_loss
                
                 d_loss.backward()
@@ -92,15 +94,15 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
                 discriminator_losses.append(d_loss.item())
                 gp_losses.append(gp_loss.item())
 
-            if d_scheduler is not None:
-                d_scheduler.step()
+                if d_scheduler is not None:
+                    d_scheduler.step()
 
             batch_count += 1
 
             generator_losses.append(g_loss.item())
         if checkpoint_path is not None:
-            torch.save(generator.state_dict(), f"{checkpoint_path}_generator.pth")
-            torch.save(discriminator.state_dict(), f"{checkpoint_path}_discriminator.pth")
+            torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
+            torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
         if debug_mode:
             print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
     return generator_losses, discriminator_losses, gp_losses
@@ -116,7 +118,7 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
     hyperparams = {
-        "num_epochs":40
+        "num_epochs":500
         
     }
     n_critic = 5
@@ -138,14 +140,15 @@ def q2(train_data):
     #Training optimizer
     total_steps = hyperparams["num_epochs"] * (len(train_loader)) 
 
-    lambda_lr = lambda step: 1 - step / total_steps
+    lambda_lr = lambda step: 1 - step / (total_steps*n_critic)
+    lambda_lr2 = lambda step: 1 - step / (total_steps)
 
     #2𝑒−4 ,  𝛽1=0 ,  𝛽2=0.9 ,  𝜆=10 ,
     d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-4, betas=(0, 0.9))
     g_optimizer = optim.Adam(generator.parameters(), lr = 2e-4, betas=(0, 0.9))
     
     d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=lambda_lr)
-    g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=lambda_lr)
+    g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=lambda_lr2)
 
 
     generator_losses, discriminator_loss, gradient_penalty = train_gan_q2(
@@ -156,7 +159,7 @@ def q2(train_data):
         d_optimizer=d_optimizer,
         g_scheduler=g_scheduler,
         d_scheduler=d_scheduler,
-        # checkpoint_path=f"homeworks/hw3/results/q3a",
+        checkpoint_path=f"hw3_q3a",
         epochs = hyperparams["num_epochs"],
         device=device,
         debug_mode=False,
