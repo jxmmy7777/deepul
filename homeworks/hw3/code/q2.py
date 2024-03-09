@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from models import *
 
+
 def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader, device, epochs=100, debug_mode=False, n_critic = 5, g_scheduler = None, d_scheduler = None,checkpoint_path=None):
     """
     Train a GAN consisting of a generator and discriminator with an option for a quick debug iteration.
@@ -50,44 +51,42 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
         g_epoch_loss = 0
         d_epoch_loss = 0
         batch_count = 0
-
+        
         for real_data  in dataloader:
             if debug_mode and batch_count >= debug_batches:
                 break
             real_data = real_data[0].to(device)
     
             batch_size = real_data.shape[0]
-            
             # -----------------
             #  Train Generator
             # -----------------
-            g_optimizer.zero_grad()
-            # z = torch.randn((batch_size,*generator.shape),device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
-            fake_data = generator.sample(batch_size, device = device)
-            output = discriminator(fake_data)
-            
-            g_loss = -torch.mean(output)
-            if g_scheduler is not None:
-                g_scheduler.step()
-           
-            g_loss.backward()
-            g_optimizer.step()
-            if g_scheduler is not None:
-                g_scheduler.step()
-            # ---------------------
-            #  Train Discriminator
-            # ---------------------
-            for i in range(n_critic):
-                d_optimizer.zero_grad()
-                real_output = discriminator(real_data)
+            if batch_count % n_critic == 0:
+                g_optimizer.zero_grad()
+                # z = torch.randn((batch_size,*generator.shape),device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
+                fake_data = generator.sample(batch_size, device = device)
+                output = discriminator(fake_data)
                 
+                g_loss = -torch.mean(output)
+                g_loss.backward()
+                g_optimizer.step()
+                if g_scheduler is not None:
+                    g_scheduler.step()
+                generator_losses.append(g_loss.item())
+            else:
+                # ---------------------
+                #  Train Critic
+                # ---------------------    
+                d_optimizer.zero_grad()
+                fake_data = generator.sample(batch_size, device = device)
+                real_output = discriminator(real_data)
                 fake_output = discriminator(fake_data.detach())
                 
                 
                 d_loss = -torch.mean(real_output) + torch.mean(fake_output)
                 gp_loss = gradient_penalty(real_data, fake_data, discriminator) * 10
                 d_loss += gp_loss
-               
+            
                 d_loss.backward()
                 d_optimizer.step()
                     
@@ -99,9 +98,7 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
 
             batch_count += 1
 
-            generator_losses.append(g_loss.item())
-
-        print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
+        print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_loss.item()}, Discriminator Loss: {d_loss.item()}')
     if checkpoint_path is not None:
         torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
         torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
@@ -119,7 +116,7 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
     hyperparams = {
-        "num_epochs":20
+        "num_epochs":100
         
     }
     n_critic = 5
@@ -129,7 +126,7 @@ def q2(train_data):
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
     train_tensor = (train_tensor *2) -1 #nomralized to -1 1
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=256, shuffle=True)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -141,8 +138,8 @@ def q2(train_data):
     #Training optimizer
     total_steps = hyperparams["num_epochs"] * (len(train_loader)) 
 
-    lambda_lr = lambda step: 1 - step / (total_steps*n_critic)
-    lambda_lr2 = lambda step: 1 - step / (total_steps)
+    lambda_lr = lambda step: 1 - step / (total_steps * 0.8)
+    lambda_lr2 = lambda step: 1 - step / (total_steps* 0.2)
 
     #2𝑒−4 ,  𝛽1=0 ,  𝛽2=0.9 ,  𝜆=10 ,
     d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-4, betas=(0, 0.9))
@@ -163,7 +160,7 @@ def q2(train_data):
         checkpoint_path=f"hw3_q2",
         epochs = hyperparams["num_epochs"],
         device=device,
-        debug_mode=False,
+        debug_mode=True,
         n_critic = n_critic
     )
     

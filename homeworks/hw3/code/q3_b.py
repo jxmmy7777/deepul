@@ -232,7 +232,7 @@ def q3b(train_data, val_data, reconstruct_data):
 
     """ YOUR CODE HERE """
 
-    hyperparams = {'lr': 1e-4, 'num_epochs': 20}
+    hyperparams = {'lr': 1e-4, 'num_epochs': 50}
     
     vqvae = VectorQuantizedVAE(code_size=1024, code_dim=256)
     # add ViT modules for encoder decoder
@@ -245,8 +245,8 @@ def q3b(train_data, val_data, reconstruct_data):
     recon_tensor = torch.tensor(reconstruct_data, dtype = torch.float32)
     
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
-    valid_loader = DataLoader(TensorDataset(valid_tensor), batch_size=128, shuffle=False)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=256, shuffle=True)
+    valid_loader = DataLoader(TensorDataset(valid_tensor), batch_size=256, shuffle=False)
     
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -288,7 +288,6 @@ def q3b(train_data, val_data, reconstruct_data):
     recon_tensor = recon_tensor.to(device)
     reconstrcutions, _ = vqvae.forward(recon_tensor)
     reconstrcutions = reconstrcutions.permute(0, 2, 3, 1).detach().cpu().numpy()  # Change to (N,H,W,C) for numpy
-    reconstrcutions = (reconstrcutions * 0.5) + 0.5  # Scal
 
     
     return discriminator_losses, l_pips_losses, l2_recon_train, l2_recon_test, reconstrcutions

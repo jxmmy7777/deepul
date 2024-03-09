@@ -95,6 +95,7 @@ class ResnetBlockUp(nn.Module):
         residual = self.residual_conv_up(x)
         
         return residual + shortcut
+    
 class ResBlock(nn.Module):
     def __init__(self, in_dim = 256, n_filters=256, kernel_size=(3, 3)):
         super(ResBlock, self).__init__()
@@ -144,8 +145,8 @@ class Generator_SNGAN(nn.Module):
         self.block2 = ResnetBlockUp(n_filters, n_filters)
         self.block3 = ResnetBlockUp(n_filters, n_filters)
         self.bn = nn.BatchNorm2d(n_filters)
-        self.relu = nn.LeakyReLU(0.2)
-        self.final_conv = nn.Conv2d(n_filters, image_channels, kernel_size=(3, 3), padding=1)
+        self.relu = nn.ReLU()
+        self.final_conv = spectral_norm(nn.Conv2d(n_filters, image_channels, kernel_size=(3, 3), padding=1))
         self.tanh = nn.Tanh()
 
     def forward(self, z):
