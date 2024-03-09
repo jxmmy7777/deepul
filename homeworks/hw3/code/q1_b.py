@@ -40,7 +40,7 @@ class Generator(nn.Module):
     @staticmethod
     def init_weights(m):
         if isinstance(m, nn.Linear):
-            nn.init.normal_(m.weight, mean=0.0, std=0.02)
+            nn.init.xavier_normal_(m.weight)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
@@ -175,7 +175,7 @@ def q1_b(train_data):
 
     """ YOUR CODE HERE """
 
-    hyperparams = {'lr': 1e-3, 'num_epochs': 500, "g_lr": 2e-4}
+    hyperparams = {'lr': 1e-3, 'num_epochs': 500, "g_lr": 1e-4}
    
     generator = Generator(1, 128, 1)
     discriminator = Discriminator(1, 128, 1)
@@ -193,6 +193,11 @@ def q1_b(train_data):
     #Training optimizer
     d_optimizer = optim.Adam(discriminator.parameters(), lr=hyperparams["lr"])
     g_optimizer = optim.Adam(generator.parameters(), lr=hyperparams["g_lr"])
+    
+    total_steps = hyperparams["num_epochs"] * (len(train_loader))
+    lambda_lr = lambda step: 1 - step / total_steps
+    d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=lambda_lr)
+    g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=lambda_lr)
 
     geneartor_loss, discriminator_loss, samples_ep1, samples_interpolate_ep1, discriminator_output_ep1 = train_gan_q1(
         dataloader=train_loader,
@@ -202,6 +207,8 @@ def q1_b(train_data):
         d_loss_fn=d_loss,
         g_optimizer=g_optimizer,
         d_optimizer=d_optimizer,
+        g_scheduler=g_scheduler,
+        d_scheduler=d_scheduler,
         # checkpoint_path=f"homeworks/hw3/results/q1a",
         epochs = hyperparams["num_epochs"],
         device=device,

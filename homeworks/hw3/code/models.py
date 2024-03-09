@@ -76,7 +76,7 @@ class ResnetBlockUp(nn.Module):
         super(ResnetBlockUp, self).__init__()
         self.bn1 = nn.BatchNorm2d(in_dim)
         self.relu1 = nn.LeakyReLU(0.2)
-        self.conv1 = nn.Conv2d(in_dim, n_filters, kernel_size, padding=1)
+        self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
         
         self.bn2 = nn.BatchNorm2d(n_filters)
         self.relu2 = nn.LeakyReLU(0.2)
@@ -141,24 +141,20 @@ class Generator_SNGAN(nn.Module):
         super(Generator_SNGAN, self).__init__()
         self.z_dim = z_dim
         self.initial_linear = nn.Linear(z_dim, 4*4*256)
-        self.block1 = ResnetBlockUp(256, n_filters)
-        self.block2 = ResnetBlockUp(n_filters, n_filters)
-        self.block3 = ResnetBlockUp(n_filters, n_filters)
-        self.bn = nn.BatchNorm2d(n_filters)
-        self.relu = nn.ReLU()
-        self.final_conv = spectral_norm(nn.Conv2d(n_filters, image_channels, kernel_size=(3, 3), padding=1))
-        self.tanh = nn.Tanh()
-
+        self.net = nn.Sequential(
+            ResnetBlockUp(256, n_filters),
+            ResnetBlockUp(n_filters, n_filters),
+            ResnetBlockUp(n_filters, n_filters),
+            nn.BatchNorm2d(n_filters),
+            nn.ReLU(),
+            nn.Conv2d(n_filters, image_channels, kernel_size=(3, 3), padding=1),
+            nn.Tanh()
+        )
+    
     def forward(self, z):
         z = self.initial_linear(z)
         z = z.view(z.shape[0], 256, 4, 4)  # Reshape z to the shape expected by the first ResBlock
-        z = self.block1(z)
-        z = self.block2(z)
-        z = self.block3(z)
-        z = self.bn(z)
-        z = self.relu(z)
-        z = self.final_conv(z)
-        output = self.tanh(z)
+        output = self.net(z)
         return output
     def sample(self, n_samples, device):
         z = torch.randn(n_samples, self.z_dim, device=device)
@@ -167,22 +163,23 @@ class Generator_SNGAN(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, n_filters=128):
         super(Discriminator, self).__init__()
-        self.block1 = ResnetBlockDown(3, n_filters)
-        self.block2 = ResnetBlockDown(n_filters, n_filters)
-        self.block3 = ResBlock(n_filters, n_filters)
-        self.block4 = ResBlock(n_filters, n_filters)
-        self.relu = nn.LeakyReLU(0.2)
-        self.global_sum_pooling = nn.AdaptiveAvgPool2d(1)  # Emulates global sum pooling
+        self.net = nn.Sequential(
+            ResnetBlockDown(3, n_filters),
+            ResnetBlockDown(n_filters, n_filters),
+            ResBlock(n_filters, n_filters),
+            ResBlock(n_filters, n_filters),
+            nn.ReLU(),
+        )
+      
+        self.relu = nn.ReLU()
         self.final_linear = nn.Linear(n_filters, 1)
 
+
     def forward(self, x):
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        x = self.relu(x) #shape (batch_size, n_filters, 8, 8)
-        x = self.global_sum_pooling(x) #shape (batch_size, n_filters, 1, 1)
-        x = x.view(x.size(0), -1)  # Flatten
+        x = self.net(x)
+        x = torch.sum(x,dim=(2,3)) #shape (batch_size, n_filters, 1, 1)
         output = self.final_linear(x)
         
-        return output #scale the output of discirminator
+        return (output)  #scale the output of discirminator
+
+

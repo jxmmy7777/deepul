@@ -35,6 +35,6 @@ def gradient_penalty(real_data, fake_data, discriminator):
                                     retain_graph=True)[0]
     #batch, channel, height, width
     gradients = gradients.view(gradients.shape[0], -1)
-    gradients_norm = gradients.norm(2, dim=1)
+    gradients_norm =  gradients.norm(2, dim=1)
     gradient_penalty = ((gradients_norm - 1) ** 2).mean()
     return gradient_penalty

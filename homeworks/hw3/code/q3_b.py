@@ -232,7 +232,7 @@ def q3b(train_data, val_data, reconstruct_data):
 
     """ YOUR CODE HERE """
 
-    hyperparams = {'lr': 1e-4, 'num_epochs': 50}
+    hyperparams = {'lr': 1e-4, 'num_epochs': 100}
     
     vqvae = VectorQuantizedVAE(code_size=1024, code_dim=256)
     # add ViT modules for encoder decoder

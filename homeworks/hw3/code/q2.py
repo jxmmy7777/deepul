@@ -46,11 +46,12 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
 
     debug_epochs = 1 if debug_mode else epochs
     debug_batches = 10
+    batch_count = 0
 
     for epoch in tqdm(range(debug_epochs), desc="Epochs"):
         g_epoch_loss = 0
         d_epoch_loss = 0
-        batch_count = 0
+        
         
         for real_data  in dataloader:
             if debug_mode and batch_count >= debug_batches:
@@ -58,51 +59,46 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
             real_data = real_data[0].to(device)
     
             batch_size = real_data.shape[0]
-            # -----------------
-            #  Train Generator
-            # -----------------
+            # train discirminator
+            d_optimizer.zero_grad()
+            fake_data = generator.sample(batch_size, device = device)
+            real_output = discriminator(real_data)
+            fake_output = discriminator(fake_data.detach())
+            
+            
+            dis_loss = fake_output.mean()-real_output.mean()
+            gp_loss = gradient_penalty(real_data, fake_data, discriminator) 
+            d_loss = dis_loss + gp_loss * 10
+        
+            d_loss.backward()
+            d_optimizer.step()
+                
+            discriminator_losses.append(d_loss.item())
+            gp_losses.append(gp_loss.item())
+
+            if d_scheduler is not None:
+                d_scheduler.step()
+            # train_geneartor
             if batch_count % n_critic == 0:
                 g_optimizer.zero_grad()
                 # z = torch.randn((batch_size,*generator.shape),device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
                 fake_data = generator.sample(batch_size, device = device)
                 output = discriminator(fake_data)
-                
-                g_loss = -torch.mean(output)
+                g_loss = -(output).mean()
                 g_loss.backward()
                 g_optimizer.step()
                 if g_scheduler is not None:
                     g_scheduler.step()
                 generator_losses.append(g_loss.item())
-            else:
-                # ---------------------
-                #  Train Critic
-                # ---------------------    
-                d_optimizer.zero_grad()
-                fake_data = generator.sample(batch_size, device = device)
-                real_output = discriminator(real_data)
-                fake_output = discriminator(fake_data.detach())
-                
-                
-                d_loss = -torch.mean(real_output) + torch.mean(fake_output)
-                gp_loss = gradient_penalty(real_data, fake_data, discriminator) * 10
-                d_loss += gp_loss
             
-                d_loss.backward()
-                d_optimizer.step()
-                    
-                discriminator_losses.append(d_loss.item())
-                gp_losses.append(gp_loss.item())
-
-                if d_scheduler is not None:
-                    d_scheduler.step()
-
             batch_count += 1
 
-        print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_loss.item()}, Discriminator Loss: {d_loss.item()}')
-    if checkpoint_path is not None:
-        torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
-        torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
-    
+        print(f"Epoch [{epoch+1}/{epochs}], Generator Loss: {np.mean(generator_losses)}, Discriminator Loss: {np.mean(discriminator_losses)}, GP: {np.mean(gp_losses)}")
+
+        if checkpoint_path is not None and batch_count % 500 == 0:
+            torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
+            torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
+        
     return generator_losses, discriminator_losses, gp_losses
 def q2(train_data):
     """
@@ -115,11 +111,11 @@ def q2(train_data):
     """
 
     """ YOUR CODE HERE """
-    hyperparams = {
-        "num_epochs":100
-        
-    }
-    n_critic = 5
+    #set different seed
+    torch.manual_seed(1)
+    np.random.seed(1)
+    
+
     generator = Generator_SNGAN(n_filters=128)
     discriminator = Discriminator(n_filters=128)
 
@@ -134,19 +130,25 @@ def q2(train_data):
     generator = generator.to(device)
     discriminator = discriminator.to(device)
 
-    #optimizer
-    #Training optimizer
-    total_steps = hyperparams["num_epochs"] * (len(train_loader)) 
+    # hyperparmas
+    
+    n_critic = 5
+    total_steps = 25000
+    num_epochs = total_steps // len(train_loader)
+    
+    # Define the step threshold at which you start annealing the learning rate
+    d_lambda_lr = lambda step: 1 - step / (total_steps)
+    g_lambda_lr = lambda step: 1 - step / (total_steps)
 
-    lambda_lr = lambda step: 1 - step / (total_steps * 0.8)
-    lambda_lr2 = lambda step: 1 - step / (total_steps* 0.2)
+    # Apply these lambda functions to your schedulers
 
     #2𝑒−4 ,  𝛽1=0 ,  𝛽2=0.9 ,  𝜆=10 ,
-    d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-4, betas=(0, 0.9))
-    g_optimizer = optim.Adam(generator.parameters(), lr = 2e-4, betas=(0, 0.9))
+    d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-4, betas=(0.0, 0.9))
+    g_optimizer = optim.Adam(generator.parameters(), lr = 2e-5, betas=(0.0, 0.9))
     
-    d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=lambda_lr)
-    g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=lambda_lr2)
+
+    d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=d_lambda_lr)
+    g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=g_lambda_lr)
 
 
     generator_losses, discriminator_loss, gradient_penalty = train_gan_q2(
@@ -158,9 +160,9 @@ def q2(train_data):
         g_scheduler=g_scheduler,
         d_scheduler=d_scheduler,
         checkpoint_path=f"hw3_q2",
-        epochs = hyperparams["num_epochs"],
+        epochs = num_epochs,
         device=device,
-        debug_mode=True,
+        debug_mode=False,
         n_critic = n_critic
     )
     
