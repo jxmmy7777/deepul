@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils import spectral_norm
 
 class DepthToSpace(nn.Module):
     def __init__(self, block_size):
@@ -46,7 +47,7 @@ class Upsample_Conv2d(nn.Module):
     def __init__(self, in_dim, out_dim, block_size=2, kernel_size=(3, 3), stride=1, padding=1):
         super(Upsample_Conv2d, self).__init__()
         self.depth_to_space = DepthToSpace(block_size=block_size)
-        self.conv = nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding)
+        self.conv = spectral_norm(nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding))
 
     def forward(self, x):
         x = torch.cat([x, x, x, x], dim=1)
@@ -59,7 +60,7 @@ class Downsample_Conv2d(nn.Module):
         super(Downsample_Conv2d, self).__init__()
         self.space_to_depth = SpaceToDepth(block_size=block_size)
         # Adjust in_dim according to space_to_depth output channel expansion
-        self.conv = nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding)
+        self.conv = spectral_norm(nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding))
 
     def forward(self, x):
         x = self.space_to_depth(x)
@@ -74,11 +75,11 @@ class ResnetBlockUp(nn.Module):
     def __init__(self, in_dim, n_filters=256, kernel_size=(3, 3)):
         super(ResnetBlockUp, self).__init__()
         self.bn1 = nn.BatchNorm2d(in_dim)
-        self.relu1 = nn.ReLU()
+        self.relu1 = nn.LeakyReLU(0.2)
         self.conv1 = nn.Conv2d(in_dim, n_filters, kernel_size, padding=1)
         
         self.bn2 = nn.BatchNorm2d(n_filters)
-        self.relu2 = nn.ReLU()
+        self.relu2 = nn.LeakyReLU(0.2)
         self.residual_conv_up = Upsample_Conv2d(n_filters, n_filters, block_size=2, kernel_size=kernel_size, padding=1)
         
         self.shortcut_conv_up = Upsample_Conv2d(in_dim, n_filters, block_size=2, kernel_size=(1, 1), padding=0)
@@ -97,11 +98,11 @@ class ResnetBlockUp(nn.Module):
 class ResBlock(nn.Module):
     def __init__(self, in_dim = 256, n_filters=256, kernel_size=(3, 3)):
         super(ResBlock, self).__init__()
-        self.relu1 = nn.ReLU()
-        self.conv1 = nn.Conv2d(in_dim, n_filters, kernel_size, padding=1)
+        self.relu1 = nn.LeakyReLU(0.2)
+        self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
 
-        self.relu2 = nn.ReLU()
-        self.conv2 = nn.Conv2d(n_filters, n_filters, kernel_size, padding=1)
+        self.relu2 = nn.LeakyReLU(0.2)
+        self.conv2 = spectral_norm(nn.Conv2d(n_filters, n_filters, kernel_size, padding=1))
     def forward(self, x):
         shortcut = x
         x = self.relu1(x)
@@ -115,10 +116,10 @@ class ResBlock(nn.Module):
 class ResnetBlockDown(nn.Module):
     def __init__(self, in_dim=256, n_filters=256, kernel_size=(3, 3)):
         super(ResnetBlockDown, self).__init__()
-        self.relu1 = nn.ReLU()
-        self.conv1 = nn.Conv2d(in_dim, n_filters, kernel_size, padding=1, bias=False)
+        self.relu1 = nn.LeakyReLU(0.2)
+        self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1, bias=False))
         
-        self.relu2 = nn.ReLU()
+        self.relu2 = nn.LeakyReLU(0.2)
         self.residual_conv_down = Downsample_Conv2d(n_filters, n_filters, block_size=2, kernel_size=kernel_size, padding=1)
         
         self.shortcut_conv_down = Downsample_Conv2d(in_dim, n_filters, block_size=2, kernel_size=(1, 1), padding=0)
@@ -143,7 +144,7 @@ class Generator_SNGAN(nn.Module):
         self.block2 = ResnetBlockUp(n_filters, n_filters)
         self.block3 = ResnetBlockUp(n_filters, n_filters)
         self.bn = nn.BatchNorm2d(n_filters)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU(0.2)
         self.final_conv = nn.Conv2d(n_filters, image_channels, kernel_size=(3, 3), padding=1)
         self.tanh = nn.Tanh()
 
@@ -169,7 +170,7 @@ class Discriminator(nn.Module):
         self.block2 = ResnetBlockDown(n_filters, n_filters)
         self.block3 = ResBlock(n_filters, n_filters)
         self.block4 = ResBlock(n_filters, n_filters)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU(0.2)
         self.global_sum_pooling = nn.AdaptiveAvgPool2d(1)  # Emulates global sum pooling
         self.final_linear = nn.Linear(n_filters, 1)
 
@@ -183,4 +184,4 @@ class Discriminator(nn.Module):
         x = x.view(x.size(0), -1)  # Flatten
         output = self.final_linear(x)
         
-        return output /200 #scale the output of discirminator
+        return output #scale the output of discirminator

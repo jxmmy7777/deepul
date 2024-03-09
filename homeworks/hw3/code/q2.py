@@ -19,11 +19,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from models import *
 
-def generator_loss(discriminator_output, dummy):
-    return -discriminator_output.mean()
-def discriminator_loss_fn(discriminator_output_real, discriminator_output_fake):
-    return -discriminator_output_real.mean() + discriminator_output_fake.mean()
-def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, d_loss_fn, dataloader, device, epochs=100, debug_mode=False, wgan_gp = False, n_critic = 5, g_scheduler = None, d_scheduler = None):
+def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader, device, epochs=100, debug_mode=False, n_critic = 5, g_scheduler = None, d_scheduler = None,checkpoint_path=None):
     """
     Train a GAN consisting of a generator and discriminator with an option for a quick debug iteration.
 
@@ -69,12 +65,13 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, 
             # z = torch.randn((batch_size,*generator.shape),device=device, dtype = torch.float32)  # generator.input_size needs to match your generator's input size
             fake_data = generator.sample(batch_size, device = device)
             output = discriminator(fake_data)
-            g_loss = g_loss_fn(output, torch.ones_like(output, device=device))
-            g_loss.backward()
-            g_optimizer.step()
+            
+            g_loss = -torch.mean(output)
             if g_scheduler is not None:
                 g_scheduler.step()
-
+           
+            g_loss.backward()
+            g_optimizer.step()
             # ---------------------
             #  Train Discriminator
             # ---------------------
@@ -85,23 +82,25 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, g_loss_fn, 
                 fake_output = discriminator(fake_data.detach())
                 
                 
-                d_loss = d_loss_fn(real_output, fake_output)
-                gp_loss = gradient_penalty(real_data, fake_data, discriminator)
+                d_loss = -torch.mean(real_output) + torch.mean(fake_output)
+                gp_loss = gradient_penalty(real_data, fake_data, discriminator)*10
                 d_loss += gp_loss
                
                 d_loss.backward()
                 d_optimizer.step()
-                if d_scheduler is not None:
-                    d_scheduler.step()
                     
                 discriminator_losses.append(d_loss.item())
                 gp_losses.append(gp_loss.item())
 
+            if d_scheduler is not None:
+                d_scheduler.step()
 
             batch_count += 1
 
             generator_losses.append(g_loss.item())
-          
+        if checkpoint_path is not None:
+            torch.save(generator.state_dict(), f"{checkpoint_path}_generator.pth")
+            torch.save(discriminator.state_dict(), f"{checkpoint_path}_discriminator.pth")
         if debug_mode:
             print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
     return generator_losses, discriminator_losses, gp_losses
@@ -117,7 +116,7 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
     hyperparams = {
-        "num_epochs":20
+        "num_epochs":40
         
     }
     n_critic = 5
@@ -137,7 +136,7 @@ def q2(train_data):
 
     #optimizer
     #Training optimizer
-    total_steps = hyperparams["num_epochs"] * (len(train_loader)) * n_critic
+    total_steps = hyperparams["num_epochs"] * (len(train_loader)) 
 
     lambda_lr = lambda step: 1 - step / total_steps
 
@@ -148,30 +147,25 @@ def q2(train_data):
     d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=lambda_lr)
     g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=lambda_lr)
 
-    g_loss_fn = generator_loss
-    d_loss_fn = discriminator_loss_fn
-    
+
     generator_losses, discriminator_loss, gradient_penalty = train_gan_q2(
         dataloader=train_loader,
         generator=generator,
         discriminator=discriminator,
-        g_loss_fn=g_loss_fn,
-        d_loss_fn=d_loss_fn,
         g_optimizer=g_optimizer,
         d_optimizer=d_optimizer,
         g_scheduler=g_scheduler,
         d_scheduler=d_scheduler,
-        # checkpoint_path=f"homeworks/hw3/results/q1a",
+        # checkpoint_path=f"homeworks/hw3/results/q3a",
         epochs = hyperparams["num_epochs"],
         device=device,
         debug_mode=False,
-        wgan_gp = True,
         n_critic = n_critic
     )
     
     samples = generator.sample(1000, device = device).permute(0, 2, 3, 1).cpu().detach().numpy()
     #unormallize
-    samples = samples/2 + 0.5 
+    samples = samples/2 + 0.5
     #plot the losses curve
     # Creating a figure for subplots
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))  # 2 rows, 1 column

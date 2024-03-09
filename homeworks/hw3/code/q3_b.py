@@ -22,26 +22,95 @@ from vqvae import VectorQuantizedVAE
 from models import *
 
 
-class Patchify(nn.Module):
-    """
-    Splits the input images into 8x8 patches.
-    Assumes input of shape (N, C, H, W).
-    """
-    def __init__(self, patch_size=8):
-        super(Patchify, self).__init__()
+from torchvision.models import vit_b_16, ViT_B_16_Weights
+
+import torch
+import torch.nn as nn
+from torchvision.models import vit_b_16
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from torch.nn import TransformerDecoder, TransformerDecoderLayer
+
+class ViTEncoder(nn.Module):
+    def __init__(self, image_size=32, patch_size=4, code_dim=256, num_layers=4, num_heads=8):
+        super(ViTEncoder, self).__init__()
+        self.image_size = image_size
         self.patch_size = patch_size
+        self.num_patches = (image_size // patch_size) ** 2
+        self.code_dim = code_dim
+        
+        self.grid_size =  int( self.num_patches**0.5)
+        
+
+        self.patch_embedding = nn.Linear(patch_size*patch_size*3, code_dim)
+
+        encoder_layers = TransformerEncoderLayer(d_model=code_dim, nhead=num_heads)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=num_layers)
 
     def forward(self, x):
-        batch_size, channels, height, width = x.shape
+        # Assuming x is [batch_size, channels, height, width]
+        # Create patches
         x = x.unfold(2, self.patch_size, self.patch_size).unfold(3, self.patch_size, self.patch_size)
-        x = x.contiguous().view(batch_size, channels, -1, self.patch_size, self.patch_size)
-        x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, channels, self.patch_size, self.patch_size)
+        x = x.contiguous().view(x.size(0), x.size(2) * x.size(3), -1)  # [batch_size, num_patches, patch_size*patch_size*3]
+        x = self.patch_embedding(x)  # [batch_size, num_patches, code_dim]
+
+        x = self.transformer_encoder(x)  # [batch_size, num_patches, code_dim]
+        x = x.permute(0, 2, 1).contiguous().view(x.size(0), -1, self.grid_size, self.grid_size)
         return x
 
+class ViTDecoder(nn.Module):
+    def __init__(self, code_dim=256, num_patches=64, patch_size=4, num_layers=4, num_heads=8):
+        super(ViTDecoder, self).__init__()
+        self.num_patches = num_patches
+        self.patch_size = patch_size
+        self.code_dim = code_dim
+
+        # Assuming the encoded feature dimension matches the transformer's input dimension (code_dim)
+        decoder_layer = TransformerDecoderLayer(d_model=code_dim, nhead=num_heads)
+        self.transformer_decoder = TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+        # Projection from transformer output to patch pixels, then reshape to image
+        self.patch_projection = nn.Linear(code_dim, patch_size * patch_size * 3)
+
+    def forward(self, encoded_patches):
+        
+        encoded_patches = encoded_patches.permute(0,2,3,1).contiguous().view(-1, self.num_patches, self.code_dim)
+        # encoded_patches shape: [batch_size, num_patches, code_dim]
+        # Apply transformer decoder
+        decoded_patches = self.transformer_decoder(encoded_patches, encoded_patches)
+        # Project back to pixel space and reshape
+        batch_size = decoded_patches.shape[0]
+        decoded_patches = self.patch_projection(decoded_patches)
+        decoded_patches = decoded_patches.view(batch_size, self.num_patches, 3, self.patch_size, self.patch_size)
+
+        # Reassemble patches into full images (This step requires careful implementation)
+        # The reassembly can be a custom function similar to an inverse of the patchify operation
+        reconstructed_images = self.rearrange_patches_to_image(decoded_patches, image_size=32, patch_size=4)
+
+        return reconstructed_images.permute(0,3,1,2).contiguous()
+
+    def rearrange_patches_to_image(self, patches, image_size, patch_size):
+        """
+        Rearrange patches back into full images.
+        patches: [batch_size, num_patches, patch_size, patch_size, 3]
+        """
+        batch_size, num_patches, _, _, _ = patches.shape
+        grid_size = int(image_size / patch_size)
+        
+        # Reshape to grid form
+        patches = patches.view(batch_size, grid_size, grid_size, patch_size, patch_size, 3)
+        
+        # Permute to [batch_size, grid_size, patch_size, grid_size, patch_size, 3]
+        patches = patches.permute(0, 1, 3, 2, 4, 5).contiguous()
+        
+        # Flatten the grid dimensions
+        images = patches.view(batch_size, image_size, image_size, 3)
+        
+        return images
+
 class Discriminator(nn.Module):
-    def __init__(self, n_filters=128, patch_size = 8):
+    def __init__(self, n_filters=128):
         super(Discriminator, self).__init__()
-        self.patchify = Patchify(patch_size=patch_size)
+        # self.patchify = Patchify(patch_size=patch_size)
         self.block1 = ResnetBlockDown(3, n_filters)
         self.block2 = ResnetBlockDown(n_filters, n_filters)
         self.block3 = ResBlock(n_filters, n_filters)
@@ -52,7 +121,7 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         #split to 8*8 patches
-        x = self.patchify(x)
+        # x = self.patchify(x)
         
         x = self.block1(x)
         x = self.block2(x)
@@ -74,6 +143,8 @@ def train_gan_q3(vqvae, discriminator, g_optimizer, d_optimizer, dataloader, val
     l2_recon_val_losses = []
 
     LPIPS_lossfunc = LPIPS().to(device)  # Make sure LPIPS is moved to the correct device
+    L1_loss = nn.L1Loss()
+
     debug_batches = 1
     epochs = 1 if debug_mode else epochs
     for epoch in tqdm(range(epochs), desc="Epochs"):
@@ -96,10 +167,12 @@ def train_gan_q3(vqvae, discriminator, g_optimizer, d_optimizer, dataloader, val
             # Compute losses
             gan_loss = -torch.mean(disc_fake) + torch.mean(disc_real)
             recon_loss = F.mse_loss(x_tilde, real_data)
+            
+            recon_L1_loss = torch.abs(x_tilde - real_data).mean()
             perceptual_loss = LPIPS_lossfunc(x_tilde, real_data).mean()
 
             # Update generator
-            g_loss = diff + 0.5 * perceptual_loss + 0.1 * gan_loss + recon_loss
+            g_loss = diff + 0.5 * perceptual_loss + 0.1 * gan_loss + recon_loss + 0.1 * recon_L1_loss
             g_optimizer.zero_grad()
             g_loss.backward()
             g_optimizer.step()
@@ -141,7 +214,7 @@ def compute_l2_recon_loss(vqvae, val_loader, device):
             l2_recon_loss.append(l2_loss.item())
     return np.mean(l2_recon_loss)
 
-def q3a(train_data, val_data, reconstruct_data):
+def q3b(train_data, val_data, reconstruct_data):
     """
     train_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
     val_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
@@ -156,9 +229,15 @@ def q3a(train_data, val_data, reconstruct_data):
     """
 
     """ YOUR CODE HERE """
-    hyperparams = {'lr': 1e-4, 'num_epochs': 15}
+
+    hyperparams = {'lr': 1e-4, 'num_epochs': 20}
     
     vqvae = VectorQuantizedVAE(code_size=1024, code_dim=256)
+    # add ViT modules for encoder decoder
+    vqvae.encoder = ViTEncoder(image_size=32, patch_size=4, code_dim=256)
+    vqvae.decoder = ViTDecoder(code_dim=256, num_patches=(32 // 4) ** 2, patch_size=4)
+
+    
     discriminator = Discriminator()
    
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
@@ -201,7 +280,7 @@ def q3a(train_data, val_data, reconstruct_data):
         # checkpoint_path=f"homeworks/hw3/results/q1a",
         epochs = hyperparams["num_epochs"],
         device=device,
-        debug_mode=False,
+        debug_mode=True,
     )
     
     
@@ -216,4 +295,4 @@ def q3a(train_data, val_data, reconstruct_data):
     
 
 if __name__ == "__main__":
-   q3_save_results(q3a, "a") # with pips
+   q3_save_results(q3b, "b") # with pips
