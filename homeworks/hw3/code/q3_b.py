@@ -30,7 +30,9 @@ from torchvision.models import vit_b_16
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.nn import TransformerDecoder, TransformerDecoderLayer
 
-class ViTEncoder(nn.Module):
+#referebced from https://github.com/thuanz123/enhancing-transformers/blob/main/enhancing/modules/stage1/layers.py
+from vit_layers import ViTEncoder, ViTDecoder
+class ViTEncoder2(nn.Module):
     def __init__(self, image_size=32, patch_size=4, code_dim=256, num_layers=4, num_heads=8):
         super(ViTEncoder, self).__init__()
         self.image_size = image_size
@@ -57,7 +59,7 @@ class ViTEncoder(nn.Module):
         x = x.permute(0, 2, 1).contiguous().view(x.size(0), -1, self.grid_size, self.grid_size)
         return x
 
-class ViTDecoder(nn.Module):
+class ViTDecoder2(nn.Module):
     def __init__(self, code_dim=256, num_patches=64, patch_size=4, num_layers=4, num_heads=8):
         super(ViTDecoder, self).__init__()
         self.num_patches = num_patches
@@ -234,10 +236,8 @@ def q3b(train_data, val_data, reconstruct_data):
     
     vqvae = VectorQuantizedVAE(code_size=1024, code_dim=256)
     # add ViT modules for encoder decoder
-    vqvae.encoder = ViTEncoder(image_size=32, patch_size=4, code_dim=256)
-    vqvae.decoder = ViTDecoder(code_dim=256, num_patches=(32 // 4) ** 2, patch_size=4)
-
-    
+    vqvae.encoder = ViTEncoder(image_size=32, patch_size=4,  heads = 8, depth = 4, dim= 256, mlp_dim = 256)
+    vqvae.decoder = ViTDecoder(image_size=32, patch_size=4, dim=256, depth = 4, heads = 8,mlp_dim = 256)    
     discriminator = Discriminator()
    
     train_tensor = torch.tensor(train_data, dtype = torch.float32)

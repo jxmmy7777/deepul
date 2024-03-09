@@ -100,11 +100,12 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
             batch_count += 1
 
             generator_losses.append(g_loss.item())
-        if checkpoint_path is not None:
-            torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
-            torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
-        if debug_mode:
-            print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
+
+        print(f'Debug Mode: Epoch [{epoch+1}/{debug_epochs}], Generator Loss: {g_epoch_loss / batch_count}, Discriminator Loss: {d_epoch_loss / batch_count}')
+    if checkpoint_path is not None:
+        torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
+        torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
+    
     return generator_losses, discriminator_losses, gp_losses
 def q2(train_data):
     """
@@ -118,7 +119,7 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
     hyperparams = {
-        "num_epochs":100
+        "num_epochs":20
         
     }
     n_critic = 5
@@ -159,7 +160,7 @@ def q2(train_data):
         d_optimizer=d_optimizer,
         g_scheduler=g_scheduler,
         d_scheduler=d_scheduler,
-        checkpoint_path=f"hw3_q3a",
+        checkpoint_path=f"hw3_q2",
         epochs = hyperparams["num_epochs"],
         device=device,
         debug_mode=False,
