@@ -80,7 +80,7 @@ class ViTDecoder(nn.Module):
         # Project back to pixel space and reshape
         batch_size = decoded_patches.shape[0]
         decoded_patches = self.patch_projection(decoded_patches)
-        decoded_patches = decoded_patches.view(batch_size, self.num_patches, 3, self.patch_size, self.patch_size)
+        decoded_patches = decoded_patches.view(batch_size, self.num_patches, self.patch_size, self.patch_size, 3)
 
         # Reassemble patches into full images (This step requires careful implementation)
         # The reassembly can be a custom function similar to an inverse of the patchify operation

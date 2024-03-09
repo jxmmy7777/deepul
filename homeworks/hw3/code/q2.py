@@ -118,7 +118,7 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
     hyperparams = {
-        "num_epochs":500
+        "num_epochs":100
         
     }
     n_critic = 5
@@ -128,7 +128,7 @@ def q2(train_data):
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
     train_tensor = (train_tensor *2) -1 #nomralized to -1 1
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=256, shuffle=True)
+    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=128, shuffle=True)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
