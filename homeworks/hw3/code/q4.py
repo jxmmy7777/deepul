@@ -45,13 +45,13 @@ class ResidualBlock(nn.Module):
     def forward(self, x):
         return x + self.block(x)
 
-
+#adopted from tutorial : https://www.youtube.com/watch?v=4LktBHGCNfw
 class Generator(nn.Module):
-    def __init__(self, img_channels, num_features=64, num_residuals=9):
+    def __init__(self, input_channel,output_channel, num_features=64, num_residuals=9):
         super().__init__()
         self.initial = nn.Sequential(
             nn.Conv2d(
-                img_channels,
+                input_channel,
                 num_features,
                 kernel_size=7,
                 stride=1,
@@ -103,7 +103,7 @@ class Generator(nn.Module):
 
         self.last = nn.Conv2d(
             num_features * 1,
-            img_channels,
+            output_channel,
             kernel_size=7,
             stride=1,
             padding=3,
@@ -145,7 +145,93 @@ class Discriminator(nn.Module):
         x = self.image_to_features(input_data)
         x = x.view(input_data.size(0), -1)
         return self.features_to_prob(x)
-    
+# data class for mnist,c-mnist dataloader, this should
+
+class MNISTData(data.Dataset):
+    def __init__(self, minst_data,cmnist_data, transform=None):
+        self.minst_data = minst_data
+        self.cmnist_data = cmnist_data
+        self.transform = transform
+        self.length_data_set = max(len(self.minst_data),len(self.cmnist_data))
+
+    def __getitem__(self, index):
+        x = self.minst_data[index]
+        x0 = self.cmnist_data[index]
+        if self.transform:
+            augmentations = self.transform(image=x,image0 = x0)
+            x = augmentations["image"]
+            x0 = augmentations["image0"]
+        return x,x0
+    def __len__(self):
+        return len(self.data)
+def train_gan_q4(disc_gray,disc_color,g_gray,g_color, discriminator, g_optimizer, d_optimizer, dataloader, device, epochs=100, debug_mode=False, g_scheduler=None, d_scheduler=None):
+    generator_losses = []
+    discriminator_losses = []
+    mse = nn.MSELoss()
+    L1 = nn.L1Loss()
+    debug_batches = 1
+    epochs = 1 if debug_mode else epochs
+    for epoch in tqdm(range(epochs), desc="Epochs"):
+        g_epoch_loss, d_epoch_loss, epoch_perceptual_loss, epoch_l2_recon_loss = 0, 0, 0, 0
+        batch_count = 0
+        loop = tqdm(dataloader, desc=f"Epoch [{epoch+1}/{epochs}]")
+        for idx,(mnist,cmnist) in enumerate(loop):
+            if debug_mode and batch_count >= debug_batches:
+                break
+            mnist = mnist.to(device)
+            cmnist = cmnist.to(device)
+            
+            #---------------Train Discriminator------------------
+            #generate fake cmnist
+            fake_cmnist = g_color(mnist)
+            d_cmnist_fake = disc_color(fake_cmnist.detach())
+            d_cmnist_real = disc_color(cmnist)
+            d_cmnist_loss_fake = mse(d_cmnist_fake, torch.zeros_like(d_cmnist_fake)) 
+            d_cmnist_loss_real = mse(d_cmnist_real, torch.ones_like(d_cmnist_real))
+            d_cmnist_loss = (d_cmnist_loss_fake + d_cmnist_loss_real)
+            #generate fake mnist
+            fake_mnist = g_gray(cmnist)
+            d_mnist_fake = disc_gray(fake_mnist.detach())
+            d_mnist_real = disc_gray(mnist)
+            d_mnist_loss_fake = mse(d_mnist_fake, torch.zeros_like(d_mnist_fake))
+            d_mnist_loss_real = mse(d_mnist_real, torch.ones_like(d_mnist_real))
+            d_mnist_loss = (d_mnist_loss_fake + d_mnist_loss_real)
+            
+            d_loss = (d_cmnist_loss + d_mnist_loss)/2
+            
+            d_optimizer.zero_grad()
+            d_loss.backward()
+            d_optimizer.step()
+            
+            #---------------Train Geneartor------------------
+            #adversarial loss
+            fake_cmnist = g_color(mnist)
+            fake_mnist = g_gray(cmnist)
+            loss_g_cmnist = mse(disc_color(fake_cmnist), torch.ones_like(fake_cmnist))
+            loss_g_mnist = mse(disc_gray(fake_mnist), torch.ones_like(fake_mnist))
+            
+            #cycle loss
+            cycle_mnist = g_gray(fake_cmnist)
+            cycle_cmnist = g_color(fake_mnist)
+            
+            loss_cycle_mnist = L1(cycle_mnist, mnist)
+            loss_cycle_cmnist = L1(cycle_cmnist, cmnist)
+            
+            g_loss = (loss_g_cmnist + loss_g_mnist) + (loss_cycle_mnist + loss_cycle_cmnist) * 10
+            g_optimizer.zero_grad()
+            g_loss.backward()
+            g_optimizer.step()
+
+            
+            # Track losses
+            generator_losses.append(g_loss.item())
+            discriminator_losses.append(d_loss.item())
+           
+         
+
+        print(f'Debug Mode: Epoch [{epoch+1}/{epochs}], Generator Loss: {np.mean(generator_losses)}, Discriminator Loss: {np.mean(discriminator_losses)}')
+
+    return np.array(discriminator_losses), np.array(perceptual_losses)
 def q4(mnist_data, cmnist_data):
     """
     mnist_data: An (60000, 1, 28, 28) numpy array of black and white images with values in [0, 1]
@@ -162,63 +248,93 @@ def q4(mnist_data, cmnist_data):
     """
     """ YOUR CODE HERE """
 
-    hyperparams = {'lr': 1e-3, 'num_epochs': 500, "g_lr": 1e-4}
-   
-    generator_gray = Generator(28, 128, 64, 1)
-    discriminator_gray = Discriminator((1, 28, 28), 64)
-    
-    generator_color = Generator(28, 128, 64, 3)
-    discriminator_color = Discriminator((3, 28, 28), 64)
-    
+    num_epochs = 100
+    generator_color = Generator(input_channel=1,output_channel=3, num_features=64, num_residuals=3)
+    discriminator_gray = Discriminator((28, 28, img_channels), 64)
 
-    train_tensor = torch.tensor(train_data, dtype = torch.float32)
+ 
+    generator_gray = Generator(input_channel=3,output_channel=1, num_features=64, num_residuals=3) #take in 3 channels output 1 channel?
+    discriminator_color = Discriminator((28, 28, img_channels), 64)
+    
     # Create DataLoader without additional transformations
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=1000, shuffle=True)
-
+    mnist_data  =  mnist_data*2 -1
+    cmnist_data = cmnist_data*2 -1
+    
+    dataset = MNISTData(mnist_data,cmnist_data)
+    train_loader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    generator = generator.to(device)
-    discriminator = discriminator.to(device)
+    generator_gray = generator_gray.to(device)
+    generator_color = generator_color.to(device)
+    discriminator_gray = discriminator_gray.to(device)
+    discriminator_color = discriminator_color.to(device)
 
     #optimizer
     #Training optimizer
-    d_optimizer = optim.Adam(discriminator.parameters(), lr=hyperparams["lr"])
-    g_optimizer = optim.Adam(generator.parameters(), lr=hyperparams["g_lr"])
-
-    g_loss_fn = nn.BCELoss()
-    d_loss_fn = nn.BCELoss()
-    geneartor_loss, discriminator_loss, samples_ep1, samples_interpolate_ep1, discriminator_output_ep1 = train_gan(
+    d_optimizer = optim.Adam(
+        list(discriminator_gray.parameters()) + list(discriminator_color.parameters()), 
+        lr=1e-4,
+        betas = (0.5, 0.99)
+    )
+    g_optimizer = optim.Adam(
+        list(generator_gray.parameters()) + list(generator_color.parameters()), 
+        lr=1e-4,
+        betas = (0.5, 0.99),
+    )
+    
+    geneartor_loss, discriminator_loss= train_gan_q4(
+        disc_gray = discriminator_gray,
+        disc_color = discriminator_color,
+        g_gray = generator_gray,
+        g_color = generator_color,
         dataloader=train_loader,
         generator=generator,
         discriminator=discriminator,
-        g_loss_fn=g_loss_fn,
-        d_loss_fn=d_loss_fn,
         g_optimizer=g_optimizer,
         d_optimizer=d_optimizer,
         # checkpoint_path=f"homeworks/hw3/results/q1a",
-        epochs = hyperparams["num_epochs"],
+        epochs =num_epochs,
         device=device,
         debug_mode=False,
     )
     
+    real_mnist = mnist_data[:20]
+    real_cmnist = cmnist_data[:20]
+    
+    #transform mnist
+    translated_mnist = generator_color(real_mnist)
+    reconstructed_mnist = generator_gray(translated_mnist)
+    
+    #transform cmnist
+    translated_cmnist = generator_gray(real_cmnist)
+    reconstructed_cmnist = generator_color(translated_cmnist)
+    
+    #unormalized backk all
+    real_mnist = (real_mnist + 1)/2
+    translated_cmnist = (translated_cmnist + 1)/2
+    reconstructed_mnist = (reconstructed_mnist + 1)/2
+    real_cmnist = (real_cmnist + 1)/2
+    translated_mnist = (translated_mnist + 1)/2
+    reconstructed_cmnist = (reconstructed_cmnist + 1)/2
+    
     
     return (
-        discriminator_loss,
-        samples_ep1,
-        samples_interpolate_ep1,
-        discriminator_output_ep1,
-        samples,
-        samples_interpolate,
-        discriminator_output
+        real_mnist.detach().cpu().numpy(),
+        translated_cmnist.detach().cpu().numpy(),
+        reconstructed_mnist.detach().cpu().numpy(),
+        real_cmnist.detach().cpu().numpy(),
+        translated_mnist.detach().cpu().numpy(),
+        reconstructed_cmnist.detach().cpu().numpy()
+        
     )
 
 
 if __name__ == "__main__":
-    img_channels = 1
+    img_channels = 3
     img_size = 28
     x = torch.randn(2, img_channels, img_size, img_size)
     generator_gray = Generator(img_channels=img_channels, num_features=64, num_residuals=3)
-    discriminator_gray = Discriminator((28, 28,1), 64)
+    discriminator_gray = Discriminator((28, 28, img_channels), 64)
     
     print(generator_gray(x).shape)
     print(discriminator_gray(x).shape)

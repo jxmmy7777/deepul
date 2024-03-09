@@ -47,7 +47,7 @@ class Upsample_Conv2d(nn.Module):
     def __init__(self, in_dim, out_dim, block_size=2, kernel_size=(3, 3), stride=1, padding=1):
         super(Upsample_Conv2d, self).__init__()
         self.depth_to_space = DepthToSpace(block_size=block_size)
-        self.conv = spectral_norm(nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding))
+        self.conv = (nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding))
 
     def forward(self, x):
         x = torch.cat([x, x, x, x], dim=1)
@@ -75,11 +75,11 @@ class ResnetBlockUp(nn.Module):
     def __init__(self, in_dim, n_filters=256, kernel_size=(3, 3)):
         super(ResnetBlockUp, self).__init__()
         self.bn1 = nn.BatchNorm2d(in_dim)
-        self.relu1 = nn.LeakyReLU(0.2)
-        self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
+        self.relu1 =nn.ReLU()
+        self.conv1 = (nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
         
         self.bn2 = nn.BatchNorm2d(n_filters)
-        self.relu2 = nn.LeakyReLU(0.2)
+        self.relu2 =nn.ReLU()
         self.residual_conv_up = Upsample_Conv2d(n_filters, n_filters, block_size=2, kernel_size=kernel_size, padding=1)
         
         self.shortcut_conv_up = Upsample_Conv2d(in_dim, n_filters, block_size=2, kernel_size=(1, 1), padding=0)
@@ -99,10 +99,10 @@ class ResnetBlockUp(nn.Module):
 class ResBlock(nn.Module):
     def __init__(self, in_dim = 256, n_filters=256, kernel_size=(3, 3)):
         super(ResBlock, self).__init__()
-        self.relu1 = nn.LeakyReLU(0.2)
+        self.relu1 = nn.ReLU()
         self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
 
-        self.relu2 = nn.LeakyReLU(0.2)
+        self.relu2 = nn.ReLU()
         self.conv2 = spectral_norm(nn.Conv2d(n_filters, n_filters, kernel_size, padding=1))
     def forward(self, x):
         shortcut = x
@@ -117,10 +117,10 @@ class ResBlock(nn.Module):
 class ResnetBlockDown(nn.Module):
     def __init__(self, in_dim=256, n_filters=256, kernel_size=(3, 3)):
         super(ResnetBlockDown, self).__init__()
-        self.relu1 = nn.LeakyReLU(0.2)
+        self.relu1 = nn.ReLU()
         self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1, bias=False))
         
-        self.relu2 = nn.LeakyReLU(0.2)
+        self.relu2 = nn.ReLU()
         self.residual_conv_down = Downsample_Conv2d(n_filters, n_filters, block_size=2, kernel_size=kernel_size, padding=1)
         
         self.shortcut_conv_down = Downsample_Conv2d(in_dim, n_filters, block_size=2, kernel_size=(1, 1), padding=0)
@@ -147,7 +147,7 @@ class Generator_SNGAN(nn.Module):
             ResnetBlockUp(n_filters, n_filters),
             nn.BatchNorm2d(n_filters),
             nn.ReLU(),
-            nn.Conv2d(n_filters, image_channels, kernel_size=(3, 3), padding=1),
+            nn.Conv2d(n_filters, 3, kernel_size=(3, 3), padding=1),
             nn.Tanh()
         )
     

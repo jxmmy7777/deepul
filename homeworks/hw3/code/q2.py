@@ -67,8 +67,11 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
             
             
             dis_loss = fake_output.mean()-real_output.mean()
-            gp_loss = gradient_penalty(real_data, fake_data, discriminator) 
+            gp_loss,norm = gradient_penalty(real_data, fake_data, discriminator) 
             d_loss = dis_loss + gp_loss * 10
+            
+            if batch_count % 200 == 0:
+                print("disc loss", dis_loss.item()), print("gp loss", gp_loss.item()), print("norm", norm.max().item())
         
             d_loss.backward()
             d_optimizer.step()
@@ -135,7 +138,7 @@ def q2(train_data):
     n_critic = 5
     total_steps = 25000
     num_epochs = total_steps // len(train_loader)
-    
+    # num_epochs = 20
     # Define the step threshold at which you start annealing the learning rate
     d_lambda_lr = lambda step: 1 - step / (total_steps)
     g_lambda_lr = lambda step: 1 - step / (total_steps)
@@ -143,8 +146,8 @@ def q2(train_data):
     # Apply these lambda functions to your schedulers
 
     #2𝑒−4 ,  𝛽1=0 ,  𝛽2=0.9 ,  𝜆=10 ,
-    d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-4, betas=(0.0, 0.9))
-    g_optimizer = optim.Adam(generator.parameters(), lr = 2e-5, betas=(0.0, 0.9))
+    d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-5, betas=(0.5, 0.9))
+    g_optimizer = optim.Adam(generator.parameters(), lr = 2e-5, betas=(0.5, 0.9))
     
 
     d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=d_lambda_lr)
