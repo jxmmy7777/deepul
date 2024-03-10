@@ -100,7 +100,6 @@ class Generator(nn.Module):
                 ),
             ]
         )
-
         self.last = nn.Conv2d(
             num_features * 1,
             output_channel,
@@ -251,7 +250,7 @@ def q4(mnist_data, cmnist_data):
     """
     """ YOUR CODE HERE """
 
-    num_epochs = 100
+    num_epochs = 10
     generator_color = Generator(input_channel=1,output_channel=3, num_features=64, num_residuals=3)
     discriminator_gray = Discriminator((28, 28, 1), 64)
 

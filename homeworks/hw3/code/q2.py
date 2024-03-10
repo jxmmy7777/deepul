@@ -103,6 +103,9 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
             torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
         
     return generator_losses, discriminator_losses, gp_losses
+
+
+  
 def q2(train_data):
     """
     train_data: An (n_train, 3, 32, 32) numpy array of CIFAR-10 images with values in [0, 1]
@@ -114,13 +117,15 @@ def q2(train_data):
     """
 
     """ YOUR CODE HERE """
-    #set different seed
-    torch.manual_seed(1)
-    np.random.seed(1)
+   
     
 
     generator = Generator_SNGAN(n_filters=128)
     discriminator = Discriminator(n_filters=128)
+    
+    #load from checkpoint
+    generator.load_state_dict(torch.load("hw3_q2_pretrain_124_generator.pth"))
+    discriminator.load_state_dict(torch.load("hw3_q2_pretrain_124_discriminator.pth"))
 
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
     train_tensor = (train_tensor *2) -1 #nomralized to -1 1
@@ -146,8 +151,8 @@ def q2(train_data):
     # Apply these lambda functions to your schedulers
 
     #2𝑒−4 ,  𝛽1=0 ,  𝛽2=0.9 ,  𝜆=10 ,
-    d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-5, betas=(0.5, 0.9))
-    g_optimizer = optim.Adam(generator.parameters(), lr = 2e-5, betas=(0.5, 0.9))
+    d_optimizer = optim.Adam(discriminator.parameters(), lr = 2e-4, betas=(0.0, 0.9))
+    g_optimizer = optim.Adam(generator.parameters(), lr = 2e-4, betas=(0.0, 0.9))
     
 
     d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=d_lambda_lr)
@@ -162,16 +167,47 @@ def q2(train_data):
         d_optimizer=d_optimizer,
         g_scheduler=g_scheduler,
         d_scheduler=d_scheduler,
-        checkpoint_path=f"hw3_q2",
+        checkpoint_path=f"hw3_q2_pretrain2",
         epochs = num_epochs,
         device=device,
-        debug_mode=False,
+        debug_mode=True,
         n_critic = n_critic
     )
     
     samples = generator.sample(1000, device = device).permute(0, 2, 3, 1).cpu().detach().numpy()
     #unormallize
     samples = samples/2 + 0.5
+    
+   
+    #calculate inception score
+    real_features_list = []
+    fake_features_list = []
+    device = "cpu"
+    generator = generator.to(device)
+    inception_model = GoogLeNet().to(device)
+    for real_data  in tqdm(train_loader):
+        inception_model.eval()
+        real_data = real_data[0].to(device)
+        batch_size = real_data.shape[0]
+        fake_data = generator.sample(batch_size, device = device)
+        real_features = inception_model.forward_fid(real_data)
+        fake_features = inception_model.forward_fid(fake_data)
+        real_features_list.append(real_features.detach())
+        fake_features_list.append(fake_features.detach())
+    real_features = torch.cat(real_features_list, 0).squeeze()
+    fake_features = torch.cat(fake_features_list, 0).squeeze()
+    
+    mu_real = real_features.mean(dim=0).squeeze()
+    sigma_real = torch.cov(real_features.t())
+
+    mu_fake = fake_features.mean(dim=0).squeeze()
+    sigma_fake = torch.cov(fake_features.t())
+
+    fid_score = calculate_fid_simple(mu_real, sigma_real, mu_fake, sigma_fake)
+    print("FID score:", fid_score)
+        
+        
+        
     #plot the losses curve
     # Creating a figure for subplots
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))  # 2 rows, 1 column
@@ -199,6 +235,23 @@ def q2(train_data):
     #Fréchet inception distance (bonus, 5pts)
     
     return discriminator_loss, samples
+
+def calculate_fid_simple(mu1, sigma1, mu2, sigma2):
+    """
+    Simplified FID calculation.
+    
+    Args:
+    - mu1, sigma1: Mean and covariance of the features from the real dataset
+    - mu2, sigma2: Mean and covariance of the features from the generated dataset
+    
+    Returns:
+    - fid_value: The calculated Frechet Inception Distance.
+    """
+    diff = mu1 - mu2
+    # Trace of covariance matrices sum and squared difference of means
+    covmean = torch.sqrt(sigma1 * sigma2)
+    fid = (diff @ diff) + torch.trace(sigma1 + sigma2 - 2 * covmean)
+    return fid.item()
 
 if __name__ == "__main__":
    q2_save_results(q2)
