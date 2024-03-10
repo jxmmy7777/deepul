@@ -163,8 +163,8 @@ class MNISTData(data.Dataset):
             x0 = augmentations["image0"]
         return x,x0
     def __len__(self):
-        return len(self.data)
-def train_gan_q4(disc_gray,disc_color,g_gray,g_color, discriminator, g_optimizer, d_optimizer, dataloader, device, epochs=100, debug_mode=False, g_scheduler=None, d_scheduler=None):
+        return self.length_data_set
+def train_gan_q4(disc_gray,disc_color,g_gray,g_color, g_optimizer, d_optimizer, dataloader, device, epochs=100, debug_mode=False, g_scheduler=None, d_scheduler=None):
     generator_losses = []
     discriminator_losses = []
     mse = nn.MSELoss()
@@ -207,8 +207,10 @@ def train_gan_q4(disc_gray,disc_color,g_gray,g_color, discriminator, g_optimizer
             #adversarial loss
             fake_cmnist = g_color(mnist)
             fake_mnist = g_gray(cmnist)
-            loss_g_cmnist = mse(disc_color(fake_cmnist), torch.ones_like(fake_cmnist))
-            loss_g_mnist = mse(disc_gray(fake_mnist), torch.ones_like(fake_mnist))
+            d_fake_cmnist = disc_color(fake_cmnist)
+            d_fake_mnist = disc_gray(fake_mnist)
+            loss_g_cmnist = mse(d_fake_cmnist, torch.ones_like(d_fake_cmnist))
+            loss_g_mnist = mse(d_fake_mnist, torch.ones_like(d_fake_mnist))
             
             #cycle loss
             cycle_mnist = g_gray(fake_cmnist)
@@ -227,11 +229,12 @@ def train_gan_q4(disc_gray,disc_color,g_gray,g_color, discriminator, g_optimizer
             generator_losses.append(g_loss.item())
             discriminator_losses.append(d_loss.item())
            
-         
+            if debug_mode:
+                break
 
         print(f'Debug Mode: Epoch [{epoch+1}/{epochs}], Generator Loss: {np.mean(generator_losses)}, Discriminator Loss: {np.mean(discriminator_losses)}')
 
-    return np.array(discriminator_losses), np.array(perceptual_losses)
+    return generator_losses, discriminator_losses
 def q4(mnist_data, cmnist_data):
     """
     mnist_data: An (60000, 1, 28, 28) numpy array of black and white images with values in [0, 1]
@@ -250,15 +253,20 @@ def q4(mnist_data, cmnist_data):
 
     num_epochs = 100
     generator_color = Generator(input_channel=1,output_channel=3, num_features=64, num_residuals=3)
-    discriminator_gray = Discriminator((28, 28, img_channels), 64)
+    discriminator_gray = Discriminator((28, 28, 1), 64)
 
  
     generator_gray = Generator(input_channel=3,output_channel=1, num_features=64, num_residuals=3) #take in 3 channels output 1 channel?
-    discriminator_color = Discriminator((28, 28, img_channels), 64)
+    discriminator_color = Discriminator((28, 28, 3), 64)
     
     # Create DataLoader without additional transformations
+    # train_tensor = torch.tensor(train_data, dtype = torch.float32)
+    # valid_tensor = torch.tensor(val_data, dtype = torch.float32)
+    mnist_data = torch.tensor(mnist_data, dtype = torch.float32)
+    cmnist_data = torch.tensor(cmnist_data, dtype = torch.float32)
+    
     mnist_data  =  mnist_data*2 -1
-    cmnist_data = cmnist_data*2 -1
+    cmnist_data =  cmnist_data*2 -1
     
     dataset = MNISTData(mnist_data,cmnist_data)
     train_loader = DataLoader(dataset, batch_size=128, shuffle=True)
@@ -288,8 +296,6 @@ def q4(mnist_data, cmnist_data):
         g_gray = generator_gray,
         g_color = generator_color,
         dataloader=train_loader,
-        generator=generator,
-        discriminator=discriminator,
         g_optimizer=g_optimizer,
         d_optimizer=d_optimizer,
         # checkpoint_path=f"homeworks/hw3/results/q1a",
@@ -298,8 +304,8 @@ def q4(mnist_data, cmnist_data):
         debug_mode=False,
     )
     
-    real_mnist = mnist_data[:20]
-    real_cmnist = cmnist_data[:20]
+    real_mnist = mnist_data[:20].to(device)
+    real_cmnist = cmnist_data[:20].to(device)
     
     #transform mnist
     translated_mnist = generator_color(real_mnist)
@@ -311,32 +317,24 @@ def q4(mnist_data, cmnist_data):
     
     #unormalized backk all
     real_mnist = (real_mnist + 1)/2
-    translated_cmnist = (translated_cmnist + 1)/2
+    translated_mnist = (translated_mnist + 1)/2
     reconstructed_mnist = (reconstructed_mnist + 1)/2
     real_cmnist = (real_cmnist + 1)/2
-    translated_mnist = (translated_mnist + 1)/2
+    translated_cmnist = (translated_cmnist + 1)/2
     reconstructed_cmnist = (reconstructed_cmnist + 1)/2
     
     
     return (
-        real_mnist.detach().cpu().numpy(),
-        translated_cmnist.detach().cpu().numpy(),
-        reconstructed_mnist.detach().cpu().numpy(),
-        real_cmnist.detach().cpu().numpy(),
-        translated_mnist.detach().cpu().numpy(),
-        reconstructed_cmnist.detach().cpu().numpy()
+        real_mnist.permute(0,2,3,1).detach().cpu().numpy(),
+        translated_mnist.permute(0,2,3,1).detach().cpu().numpy(),
+        reconstructed_mnist.permute(0,2,3,1).detach().cpu().numpy(),
+        real_cmnist.permute(0,2,3,1).detach().cpu().numpy(),
+        translated_cmnist.permute(0,2,3,1).detach().cpu().numpy(),
+        reconstructed_cmnist.permute(0,2,3,1).detach().cpu().numpy()
         
     )
 
 
 if __name__ == "__main__":
-    img_channels = 3
-    img_size = 28
-    x = torch.randn(2, img_channels, img_size, img_size)
-    generator_gray = Generator(img_channels=img_channels, num_features=64, num_residuals=3)
-    discriminator_gray = Discriminator((28, 28, img_channels), 64)
-    
-    print(generator_gray(x).shape)
-    print(discriminator_gray(x).shape)
-    
-#    q4_save_results(q4)
+
+   q4_save_results(q4)

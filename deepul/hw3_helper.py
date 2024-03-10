@@ -176,7 +176,7 @@ def q3_save_results(fn, part):
 def get_colored_mnist(data):
     # from https://www.wouterbulten.nl/blog/tech/getting-started-with-gans-2-colorful-mnist/
     # Read Lena image
-    lena = PILImage.open('deepul/deepul/hw3_utils/lena.jpg')
+    lena = PILImage.open('/home/msc_lab/ctang/weijer/deepul/deepul/hw3_utils/lena.jpg')
 
     # Resize
     batch_resized = np.asarray([scipy.ndimage.zoom(image, (2.3, 2.3, 1), order=1) for image in data])
