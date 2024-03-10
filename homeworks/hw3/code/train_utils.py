@@ -25,6 +25,7 @@ def evaluate_generator_discriminator(generator, discriminator,device, sample_siz
 
 def gradient_penalty(real_data, fake_data, discriminator):
     epsilon = torch.rand(real_data.shape[0], 1, 1, 1).to(real_data.device)
+    #change this to uniform from 0 to 1
     interpolate_data = (epsilon * real_data + (1 - epsilon) * fake_data).clone().detach()
     interpolate_data.requires_grad = True
     d_interpolate = discriminator(interpolate_data)

@@ -46,76 +46,47 @@ class ResidualBlock(nn.Module):
         return x + self.block(x)
 
 #adopted from tutorial : https://www.youtube.com/watch?v=4LktBHGCNfw
+import torch
+import torch.nn as nn
+
 class Generator(nn.Module):
-    def __init__(self, input_channel,output_channel, num_features=64, num_residuals=9):
-        super().__init__()
+    def __init__(self, input_channel, output_channel, num_features=64, num_residuals=9):
+        super(Generator, self).__init__()
+        # Initial convolution block
         self.initial = nn.Sequential(
-            nn.Conv2d(
-                input_channel,
-                num_features,
-                kernel_size=7,
-                stride=1,
-                padding=3,
-                padding_mode="reflect",
-            ),
+            nn.Conv2d(input_channel, num_features, kernel_size=7, stride=1, padding=3, padding_mode="reflect"),
             nn.InstanceNorm2d(num_features),
             nn.ReLU(inplace=True),
         )
-        self.down_blocks = nn.ModuleList(
-            [
-                ConvBlock(
-                    num_features, num_features * 2, kernel_size=3, stride=2, padding=1
-                ),
-                ConvBlock(
-                    num_features * 2,
-                    num_features * 4,
-                    kernel_size=3,
-                    stride=2,
-                    padding=1,
-                ),
-            ]
-        )
-        self.res_blocks = nn.Sequential(
-            *[ResidualBlock(num_features * 4) for _ in range(num_residuals)]
-        )
-        self.up_blocks = nn.ModuleList(
-            [
-                ConvBlock(
-                    num_features * 4,
-                    num_features * 2,
-                    down=False,
-                    kernel_size=3,
-                    stride=2,
-                    padding=1,
-                    output_padding=1,
-                ),
-                ConvBlock(
-                    num_features * 2,
-                    num_features * 1,
-                    down=False,
-                    kernel_size=3,
-                    stride=2,
-                    padding=1,
-                    output_padding=1,
-                ),
-            ]
-        )
-        self.last = nn.Conv2d(
-            num_features * 1,
-            output_channel,
-            kernel_size=7,
-            stride=1,
-            padding=3,
-            padding_mode="reflect",
-        )
+        self.down_blocks = nn.ModuleList([
+            ConvBlock(num_features, num_features * 2, kernel_size=3, stride=2, padding=1),
+            ConvBlock(num_features * 2, num_features * 4, kernel_size=3, stride=2, padding=1),
+        ])
+
+        self.res_blocks = nn.Sequential(*[ResidualBlock(num_features * 4) for _ in range(num_residuals)])
+
+        self.up_blocks = nn.ModuleList([
+            ConvBlock(num_features * 4, num_features * 2, down=False, kernel_size=3, stride=2, padding=1, output_padding=1),
+            ConvBlock(num_features * 2, num_features, down=False, kernel_size=3, stride=2, padding=1, output_padding=1),
+        ])
+   
+        self.last = nn.Conv2d(num_features, output_channel, kernel_size=7, stride=1, padding=3, padding_mode="reflect")
+
     def forward(self, x):
+        # Pass through the initial layer
+        #Note that we are not sampling from z, but input image for transformation
         x = self.initial(x)
-        for layer in self.down_blocks:
-            x = layer(x)
+        
+        # -----Downsample----
+        for block in self.down_blocks:
+            x = block(x)
         x = self.res_blocks(x)
-        for layer in self.up_blocks:
-            x = layer(x)
-        return torch.tanh(self.last(x))
+        # Upsample
+        for block in self.up_blocks:
+            x = block(x)
+        x = self.last(x)
+        return torch.tanh(x)
+
 
 
 class Discriminator(nn.Module):
@@ -300,7 +271,7 @@ def q4(mnist_data, cmnist_data):
         # checkpoint_path=f"homeworks/hw3/results/q1a",
         epochs =num_epochs,
         device=device,
-        debug_mode=False,
+        debug_mode=True,
     )
     
     real_mnist = mnist_data[:20].to(device)

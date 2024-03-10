@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from models import *
 
+from wgan_gp_debug import Generator, Discriminator
 
 def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader, device, epochs=100, debug_mode=False, n_critic = 5, g_scheduler = None, d_scheduler = None,checkpoint_path=None):
     """
@@ -75,9 +76,11 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
         
             d_loss.backward()
             d_optimizer.step()
+                
             discriminator_losses.append(d_loss.item())
             gp_losses.append(gp_loss.item())
 
+          
             # train_geneartor
             if batch_count % n_critic == 0:
                 g_optimizer.zero_grad()
@@ -87,23 +90,17 @@ def train_gan_q2(generator, discriminator, g_optimizer, d_optimizer, dataloader,
                 g_loss = -(output).mean()
                 g_loss.backward()
                 g_optimizer.step()
-                
-                generator_losses.append(g_loss.item())
+            generator_losses.append(g_loss.item())
             
             batch_count += 1
             # if checkpoint_path is not None and batch_count % 500 == 0:
             #     torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
             #     torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
-        #scheduler update base on epochs
+        
         if g_scheduler is not None:
             g_scheduler.step()
         if d_scheduler is not None:
             d_scheduler.step()
-        if checkpoint_path is not None and epoch % 20 == 0:
-            torch.save(generator.state_dict(), f"{checkpoint_path}_{epoch}_generator.pth")
-            torch.save(discriminator.state_dict(), f"{checkpoint_path}_{epoch}_discriminator.pth")
-        
-
         print(f"Epoch [{epoch+1}/{epochs}], Generator Loss: {np.mean(generator_losses)}, Discriminator Loss: {np.mean(discriminator_losses)}, GP: {np.mean(gp_losses)}")
 
       
@@ -123,14 +120,13 @@ def q2(train_data):
 
     """ YOUR CODE HERE """
    
-    
 
-    generator = Generator_SNGAN(n_filters=128)
-    discriminator = Discriminator(n_filters=128)
+    generator = Generator()
+    discriminator = Discriminator()
     
     #load from checkpoint
-    generator.load_state_dict(torch.load("/home/msc_lab/ctang/weijer/deepul/checkpoints/hw3_q2_pretrain_epoch_sche_60_generator.pth"))
-    discriminator.load_state_dict(torch.load("/home/msc_lab/ctang/weijer/deepul/checkpoints/hw3_q2_pretrain_epoch_sche_60_discriminator.pth"))
+    # generator.load_state_dict(torch.load("hw3_q2_pretrain2_124_generator.pth"))
+    # discriminator.load_state_dict(torch.load("hw3_q2_pretrain2_124_discriminator.pth"))
 
     train_tensor = torch.tensor(train_data, dtype = torch.float32)
     train_tensor = (train_tensor *2) -1 #nomralized to -1 1
@@ -150,8 +146,8 @@ def q2(train_data):
     num_epochs = total_steps // len(train_loader)
     # num_epochs = 20
     # Define the step threshold at which you start annealing the learning rate
-    d_lambda_lr = lambda epochs: 1 - epochs / (num_epochs)
-    g_lambda_lr = lambda epochs: 1 - epochs / (num_epochs)
+    d_lambda_lr = lambda step: 1 - step / (total_steps)
+    g_lambda_lr = lambda step: 1 - step / (total_steps)
 
     # Apply these lambda functions to your schedulers
 
@@ -160,8 +156,12 @@ def q2(train_data):
     g_optimizer = optim.Adam(generator.parameters(), lr = 2e-4, betas=(0.0, 0.9))
     
 
+    d_lambda_lr = lambda epochs: (num_epochs - epochs) / (num_epochs)
+    g_lambda_lr = lambda epochs: (num_epochs - epochs) / (num_epochs)
+    
     d_scheduler = optim.lr_scheduler.LambdaLR(d_optimizer, lr_lambda=d_lambda_lr)
     g_scheduler = optim.lr_scheduler.LambdaLR(g_optimizer, lr_lambda=g_lambda_lr)
+
 
 
     generator_losses, discriminator_loss, gradient_penalty = train_gan_q2(
@@ -170,12 +170,12 @@ def q2(train_data):
         discriminator=discriminator,
         g_optimizer=g_optimizer,
         d_optimizer=d_optimizer,
-        g_scheduler=g_scheduler,
-        d_scheduler=d_scheduler,
-        checkpoint_path=f"checkpoints/hw3_q2_pretrain_epoch_sche",
+        # g_scheduler=g_scheduler,
+        # d_scheduler=d_scheduler,
+        checkpoint_path=f"hw3_q2_debug",
         epochs = num_epochs,
         device=device,
-        debug_mode=True,
+        debug_mode=False,
         n_critic = n_critic
     )
     
@@ -183,12 +183,8 @@ def q2(train_data):
     #unormallize
     samples = samples/2 + 0.5
     
-   
-    #------------------calculate inception score------------------------
     real_features_list = []
     fake_features_list = []
-    
-    device = "cpu"
     generator = generator.to(device)
     inception_model = GoogLeNet().to(device)
     inception_model.load_state_dict(torch.load("/home/msc_lab/ctang/weijer/deepul/deepul/hw3_utils/classifier.pt"))
@@ -205,7 +201,7 @@ def q2(train_data):
         real_features_list.append(real_features.detach())
         fake_features_list.append(fake_features.detach())
         
-        if len(real_features_list)>30:
+        if len(real_features_list)>50:
             break
         
     real_features = torch.cat(real_features_list, 0).squeeze()

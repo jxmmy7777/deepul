@@ -60,14 +60,13 @@ class Downsample_Conv2d(nn.Module):
         super(Downsample_Conv2d, self).__init__()
         self.space_to_depth = SpaceToDepth(block_size=block_size)
         # Adjust in_dim according to space_to_depth output channel expansion
-        self.conv = spectral_norm(nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding))
+        self.conv = (nn.Conv2d(in_dim , out_dim, kernel_size, stride, padding))
 
     def forward(self, x):
         x = self.space_to_depth(x)
         x_chunks = x.chunk(4, dim=1)
         summed_chunks = torch.stack(x_chunks).sum(dim=0)
-
-        x = summed_chunks/ 4.0
+        x = summed_chunks /4.0
         x = self.conv(x)
         return x
 
@@ -100,10 +99,9 @@ class ResBlock(nn.Module):
     def __init__(self, in_dim = 256, n_filters=256, kernel_size=(3, 3)):
         super(ResBlock, self).__init__()
         self.relu1 = nn.ReLU()
-        self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
-
+        self.conv1 = (nn.Conv2d(in_dim, n_filters, kernel_size, padding=1))
         self.relu2 = nn.ReLU()
-        self.conv2 = spectral_norm(nn.Conv2d(n_filters, n_filters, kernel_size, padding=1))
+        self.conv2 = (nn.Conv2d(n_filters, n_filters, kernel_size, padding=1))
     def forward(self, x):
         shortcut = x
         x = self.relu1(x)
@@ -118,7 +116,7 @@ class ResnetBlockDown(nn.Module):
     def __init__(self, in_dim=256, n_filters=256, kernel_size=(3, 3)):
         super(ResnetBlockDown, self).__init__()
         self.relu1 = nn.ReLU()
-        self.conv1 = spectral_norm(nn.Conv2d(in_dim, n_filters, kernel_size, padding=1, bias=False))
+        self.conv1 = (nn.Conv2d(in_dim, n_filters, kernel_size, padding=1, bias=False))
         
         self.relu2 = nn.ReLU()
         self.residual_conv_down = Downsample_Conv2d(n_filters, n_filters, block_size=2, kernel_size=kernel_size, padding=1)
@@ -171,13 +169,13 @@ class Discriminator(nn.Module):
             nn.ReLU(),
         )
       
-        self.relu = nn.ReLU()
+        self.mean_pool = nn.AdaptiveAvgPool2d(1)
         self.final_linear = nn.Linear(n_filters, 1)
 
 
     def forward(self, x):
         x = self.net(x)
-        x = torch.sum(x,dim=(2,3)) #shape (batch_size, n_filters, 1, 1)
+        x = self.mean_pool(x).squeeze() #shape (batch_size, n_filters, 1, 1)
         output = self.final_linear(x)
         
         return (output)  #scale the output of discirminator
