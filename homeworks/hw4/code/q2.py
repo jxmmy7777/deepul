@@ -264,8 +264,8 @@ def q2(train_data, test_data):
       1 to 512, i.e. np.power(2, np.linspace(0, 9, 10)).astype(int)
     """
     #normalize the data
-    train_args = {'epochs': 1, 'lr': 1e-3, "scheduler":True}
-   
+    train_args = {'epochs': 60, 'lr': 1e-3}
+    
     Unet = UNet(in_channels=3)
     
     model = ContinuousGaussianDiffusion(Unet)
@@ -286,20 +286,22 @@ def q2(train_data, test_data):
     train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=256)
 
+    total_steps = len(train_loader) * train_args["epochs"]
+    train_args["scheduler"] = {"Total_steps":total_steps, "Warmup_steps":100}
     #TODO pass scheduler config to train_args
 
-    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False)
+    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False, checkpoint=f"q2")
     
     #sample from diffusion model
-    sample_steps = np.power(2, np.linspace(0, 9, 9)).astype(int)
+    sample_steps = np.power(2, np.linspace(0, 9, 10)).astype(int)
     samples_list = []
     for i in range(len(sample_steps)):
-        samples = model.ddpm_smapler(sample_steps[i]).permute(0, 2, 3, 1)
+        samples = model.ddpm_smapler(sample_steps[i], num_samples=10).permute(0, 2, 3, 1)
         samples_list.append(samples.detach().cpu().numpy())
     all_samples = np.array(samples_list)
     #unormalize samples
     all_samples = all_samples * 0.5 + 0.5
-    return train_losses["loss"], test_losses["loss"], all_samples
+    return train_losses["loss"], test_losses["loss"], all_samples.reshape(10, 10, 32, 32, 3)
 
 if __name__ == "__main__":
     q2_save_results(q2)

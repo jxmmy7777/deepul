@@ -58,13 +58,14 @@ def eval_loss(model, data_loader, quiet):
     return total_losses
 
 
-def train_epochs(model, train_loader, test_loader, train_args, quiet=False):
+def train_epochs(model, train_loader, test_loader, train_args, quiet=False , checkpoint=None):
     epochs, lr = train_args['epochs'], train_args['lr']
     grad_clip = train_args.get('grad_clip', None)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # if scheduler
     if train_args["scheduler"]:
         # scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_cosine_decay_lr)
+        T_max = train_args["scheduler"]["Total_steps"] - train_args["scheduler"]["Warmup_steps"]
         scheduler =  optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10000 - 100, eta_min=0)
     else:
         scheduler = None
@@ -82,6 +83,16 @@ def train_epochs(model, train_loader, test_loader, train_args, quiet=False):
                 test_losses[k] = []
             train_losses[k].extend(train_loss[k])
             test_losses[k].append(test_loss[k])
+        
+        if checkpoint is not None and epoch % 10 == 0:
+            #save all information to checkpoint path
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': train_losses,
+                'test_loss': test_losses
+            }, checkpoint)
     return train_losses, test_losses
 
 def warmup_cosine_decay_lr(steps, warmup_steps=100, total_steps=10000, initial_lr=1e-3):
