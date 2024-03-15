@@ -139,6 +139,7 @@ def q1(train_data, test_data):
     train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1024)
 
+    #TODO pass scheduler config to train_args
 
     train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False)
     

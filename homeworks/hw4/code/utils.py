@@ -72,10 +72,10 @@ def train_epochs(model, train_loader, test_loader, train_args, quiet=False):
     train_losses, test_losses = OrderedDict(), OrderedDict()
     for epoch in range(epochs):
         model.train()
-        train_loss = train(model, train_loader, optimizer, epoch, quiet, grad_clip, scheduler)
+        train_loss = train(model, train_loader, optimizer, epoch, quiet, grad_clip)
         test_loss = eval_loss(model, test_loader, quiet)
-        # if scheduler is not None:
-        #     scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
         for k in train_loss.keys():
             if k not in train_losses:
                 train_losses[k] = []
