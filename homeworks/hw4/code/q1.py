@@ -31,8 +31,9 @@ class MLP(nn.Module):
             *[nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.ReLU()) for _ in range(layers - 1)],
             nn.Linear(hidden_size, output_size)
         )
+        self.input_shape = (2,)
     def forward(self, x, t):
-        x = torch.cat([x, t], dim=-1)
+        x = torch.cat([x, t[:,None]], dim=-1)
         return self.net(x)
 #Continous Noise Schedule
 
@@ -40,11 +41,11 @@ def noise_strength(t):
     alpha_t = torch.cos(torch.pi / 2 * t)
     sigma_t = torch.sin(torch.pi / 2 * t)
     return alpha_t, sigma_t
+
 class ContinuousGaussianDiffusion(nn.Module):
     def __init__(self, model):
         super().__init__()
         self.model = model  # The neural network model f(x,t)
-        self.z_dim = 2
 
     @staticmethod
     def noise_strength(t):
@@ -58,30 +59,44 @@ class ContinuousGaussianDiffusion(nn.Module):
         alpha_t, sigma_t = noise_strength(t)
         alpha_tm1, sigma_tm1 = noise_strength(tm1)
         
+        expand_shape = (-1,) + (1,) * (x.dim() - 1)  # Creates a shape like [-1, 1, 1, 1] for 4D or [-1, 1] for 2D
+        alpha_t = alpha_t.view(expand_shape)
+        sigma_t = sigma_t.view(expand_shape)
+        alpha_tm1 = alpha_tm1.view(expand_shape)
+        sigma_tm1 = sigma_tm1.view(expand_shape)
         #𝜂_t
         noise_scale_t =  sigma_tm1/sigma_t * torch.sqrt(1 - (alpha_t/alpha_tm1)**2)
         x_tm1 = alpha_tm1 * (x - sigma_t * eps_hat)/alpha_t + \
                     torch.sqrt(torch.relu(sigma_tm1**2 -  noise_scale_t**2))*eps_hat +\
                     noise_scale_t*torch.randn_like(x)
+        #clip x_tm1 to -1 to 1
+        # x_tm1 = torch.clamp(x_tm1, -1, 1)
         return x_tm1
     @torch.no_grad()
     def ddpm_smapler(self, num_steps, num_samples = 2000, device="cuda"):
         ts = torch.linspace(1 - 1e-4, 1e-4, num_steps + 1, device=device)
-        x =  torch.randn(num_samples, self.z_dim, device=device)
+        x =  torch.randn((num_samples,*self.model.input_shape) , device=device)
       
         for i in range(num_steps):
             t = ts[i]
             tm1 = ts[i + 1]
             #t should be same shape as x
-            t = t.expand(x.shape[0], 1)
-            tm1 = tm1.expand(x.shape[0], 1)
+            t = t.expand(x.shape[0])
+            tm1 = tm1.expand(x.shape[0])
             eps_hat = self.model(x, t)
             x = self.DDPM_UPDATE(x, eps_hat, t, tm1)
         return x
 
     def forward_diffusion(self, x, t):
         alpha_t, sigma_t = noise_strength(t)
-        epsilon = torch.randn_like(x) #uniform sampling
+        epsilon = torch.randn_like(x) #uniform sampling 
+        #alpha_t,sigma_t is shape (B), should expand to same shape as x?
+        if len(x.shape) == 4:
+            alpha_t = alpha_t[:,None,None,None]
+            sigma_t = sigma_t[:,None,None,None]
+        elif len(x.shape) == 2:
+            alpha_t = alpha_t[:,None]
+            sigma_t = sigma_t[:,None]
         x_noised = alpha_t * x + sigma_t * epsilon
         return x_noised, epsilon
 
@@ -90,13 +105,12 @@ class ContinuousGaussianDiffusion(nn.Module):
         return F.mse_loss(epsilon, epsilon_hat, reduction= "mean") 
 
     def loss(self, x):
-        t = torch.rand((*x.shape[:-1], 1), device=x.device) #uniform from 0-1
+        t = torch.rand((x.shape[0]), device=x.device) #uniform from 0-1, but should be same accross batch
+        #if t is not in the same shape as x, need to braodcast
         x_noised, epsilon = self.forward_diffusion(x, t)
         loss = self.loss_function(x_noised, epsilon, t)
         
         return {"loss":loss}
-
-
 
 def q1(train_data, test_data):
     """
@@ -114,7 +128,7 @@ def q1(train_data, test_data):
 
     """ YOUR CODE HERE """
     #normalize the data
-    train_args = {'epochs': 100, 'lr': 1e-3, "scheduler":True}
+    train_args = {'epochs': 100, 'lr': 1e-3}
     mean = np.mean(train_data, axis=0)
     std = np.std(train_data, axis=0)
     
@@ -139,6 +153,8 @@ def q1(train_data, test_data):
     train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1024)
 
+    total_steps = len(train_loader) * train_args["epochs"]
+    train_args["scheduler"] = {"Total_steps":total_steps, "Warmup_steps":100}
     #TODO pass scheduler config to train_args
 
     train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False)

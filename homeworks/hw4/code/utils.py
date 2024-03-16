@@ -56,27 +56,59 @@ def eval_loss(model, data_loader, quiet):
         if not quiet:
             print(desc)
     return total_losses
+from torch.optim.lr_scheduler import _LRScheduler
 
+class WarmupCosineDecayLR(_LRScheduler):
+    def __init__(self, optimizer, warmup_steps, total_steps, min_lr=0, last_epoch=-1):
+        self.warmup_steps = warmup_steps
+        self.total_steps = total_steps
+        self.min_lr = min_lr
+        self.cosine_decay_steps = total_steps - warmup_steps
+        super(WarmupCosineDecayLR, self).__init__(optimizer, last_epoch)
 
-def train_epochs(model, train_loader, test_loader, train_args, quiet=False , checkpoint=None):
+    def get_lr(self):
+        if self.last_epoch < self.warmup_steps:
+            warmup_factor = self.last_epoch / self.warmup_steps
+            return [base_lr * warmup_factor for base_lr in self.base_lrs]
+        
+        # Cosine annealing
+        cosine_decay = 0.5 * (1 + math.cos(math.pi * (self.last_epoch - self.warmup_steps) / self.cosine_decay_steps))
+        decayed_lr = self.min_lr + (self.base_lrs[0] - self.min_lr) * cosine_decay
+        return [decayed_lr for _ in self.base_lrs]
+
+def train_epochs(model, train_loader, test_loader, train_args, quiet=False, checkpoint=None):
     epochs, lr = train_args['epochs'], train_args['lr']
     grad_clip = train_args.get('grad_clip', None)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # if scheduler
-    if train_args["scheduler"]:
+    if "scheduler" in train_args:
         # scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_cosine_decay_lr)
-        T_max = train_args["scheduler"]["Total_steps"] - train_args["scheduler"]["Warmup_steps"]
-        scheduler =  optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10000 - 100, eta_min=0)
+        # T_max = train_args["scheduler"]["Total_steps"] - train_args["scheduler"]["Warmup_steps"]
+        # scheduler =  optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=0)
+        # scheduler = WarmupCosineDecayLR(optimizer, warmup_steps=warmup_steps, total_steps=total_steps, min_lr=0)
+        # from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
+        #https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
+        # scheduler = CosineAnnealingWarmupRestarts(optimizer,
+        #                                   first_cycle_steps=200,
+        #                                   cycle_mult=1.0,
+        #                                   max_lr=0.1,
+        #                                   min_lr=0.001,
+        #                                   warmup_steps=train_args["scheduler"]["Warmup_steps"],
+        #                                   gamma=1.0)
+        # from functools import partial
+        # warmup_cosine_decay_lr_args = partial(warmup_cosine_decay_lr, warmup_steps=train_args["scheduler"]["Warmup_steps"], total_steps=train_args["scheduler"]["Total_steps"], initial_lr=train_args["lr"]) 
+        # scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_cosine_decay_lr)
+        scheduler = WarmupCosineDecayScheduler(optimizer, warmup_steps=train_args["scheduler"]["Warmup_steps"], total_steps=train_args["scheduler"]["Total_steps"], initial_lr=train_args["lr"])
     else:
         scheduler = None
 
     train_losses, test_losses = OrderedDict(), OrderedDict()
     for epoch in range(epochs):
         model.train()
-        train_loss = train(model, train_loader, optimizer, epoch, quiet, grad_clip)
+        train_loss = train(model, train_loader, optimizer, epoch, quiet, grad_clip, scheduler)
         test_loss = eval_loss(model, test_loader, quiet)
-        if scheduler is not None:
-            scheduler.step()
+        # if scheduler is not None:
+        #     scheduler.step()
         for k in train_loss.keys():
             if k not in train_losses:
                 train_losses[k] = []
@@ -93,20 +125,39 @@ def train_epochs(model, train_loader, test_loader, train_args, quiet=False , che
                 'train_loss': train_losses,
                 'test_loss': test_losses
             }, checkpoint)
+            print(f"Checkpoint saved at {checkpoint}")
     return train_losses, test_losses
 
 def warmup_cosine_decay_lr(steps, warmup_steps=100, total_steps=10000, initial_lr=1e-3):
-    if steps < warmup_steps:
+    if steps <= warmup_steps:
         # Linear warmup
         lr = initial_lr * (steps / warmup_steps)
     else:
         # Cosine decay
         decay_steps = steps - warmup_steps
         decay_total = total_steps - warmup_steps
-        cosine_decay = 0.5 * (1 + torch.cos(torch.pi * decay_steps / decay_total))
+        cosine_decay = 0.5 * (1 + np.cos(torch.pi * decay_steps / decay_total))
         lr = initial_lr * cosine_decay
     return lr
 
+
+class WarmupCosineDecayScheduler(_LRScheduler):
+    def __init__(self, optimizer, warmup_steps, total_steps, initial_lr=1e-3, last_epoch=-1, verbose=False):
+        self.warmup_steps = warmup_steps
+        self.total_steps = total_steps
+        self.initial_lr = initial_lr
+        self.verbose = verbose
+        super(WarmupCosineDecayScheduler, self).__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        if self._step_count <= self.warmup_steps:
+            lr = self.initial_lr * self._step_count / self.warmup_steps
+        else:
+            decay_steps = self._step_count - self.warmup_steps
+            decay_total = self.total_steps - self.warmup_steps
+            cosine_decay = 0.5 * (1 + np.cos(np.pi * decay_steps / decay_total))
+            lr = self.initial_lr * cosine_decay
+        return [lr for _ in self.optimizer.param_groups]
     
 class MLP(nn.Module):
     def __init__(self, input_shape, output_shape, hiddens=[]):

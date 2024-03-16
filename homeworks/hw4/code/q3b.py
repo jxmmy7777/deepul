@@ -86,7 +86,7 @@ def Downsample(in_channels):
 
 def Upsample(in_channels):
     return nn.Sequential(
-        nn.Upsample(scale_factor = 2, mode = 'bilinear', align_corners=False),
+        nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
         nn.Conv2d(in_channels, in_channels, 3, padding=1),
     )
 
@@ -134,13 +134,13 @@ class UNet(nn.Module):
         # Upsample path
         self.ups = nn.ModuleList()
         
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
+        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
             
             input_dim = (dim_in + dim_out)*2 if ind > 0 else dim_out * 2
             self.ups.append(nn.ModuleList([
                 ResidualBlock( input_dim, dim_out, self.temb_channels),
-                ResidualBlock(dim_out+dim_in, dim_out, self.temb_channels),
+                ResidualBlock(dim_out, dim_out, self.temb_channels),
                 Upsample(dim_out) if not is_last else nn.Identity()
                 
             ]))
@@ -163,8 +163,6 @@ class UNet(nn.Module):
             h = resnet2(h, temb)
             hs.append(h)
             h = down(h)
-            if not isinstance(down, nn.Identity):
-                hs.append(h)
         # Middle
         h = self.middle_block_1(h, temb)
         h = self.middle_block_2(h, temb)
@@ -173,16 +171,16 @@ class UNet(nn.Module):
         for resnet, resnet2, up in self.ups:
             h = torch.cat([h, hs.pop()], dim=1) #2*hidden_dim , next hidden_dim+prev_hiddem
             h = resnet(h, temb)
-            h = torch.cat([h, hs.pop()], dim=1) #2*hidden_dim , next hidden_dim+prev_hiddem
             h = resnet2(h, temb)
             h = up(h)
+            
             
        
         h = self.final_norm(h)
         h = F.silu(h)
         out = self.final_conv(h)
         return out
-
+ 
 
 class ContinuousGaussianDiffusion(nn.Module):
     def __init__(self, model):
@@ -269,10 +267,7 @@ def q2(train_data, test_data):
     train_args = {'epochs': 60, 'lr': 1e-3}
     
     Unet = UNet(in_channels=3)
-    # from denoising_diffusion_pytorch import Unet
-    # Unet = Unet(dim=64,
-    #             dim_mults=(1, 2, 4, 8))
-    Unet.input_shape = (3, 32, 32)
+    
     model = ContinuousGaussianDiffusion(Unet)
     #device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -281,7 +276,6 @@ def q2(train_data, test_data):
     test_data = (test_data - 0.5)*2
     # Convert to PyTorch tensors
     train_tensor = torch.tensor(train_data, dtype=torch.float32).permute(0, 3, 1, 2)
-    # test_tensor = torch.tensor(train_data, dtype=torch.float32).permute(0, 3, 1, 2)
     test_tensor = torch.tensor(test_data, dtype=torch.float32).permute(0, 3, 1, 2)
 
     # Create TensorDatasets
@@ -296,9 +290,7 @@ def q2(train_data, test_data):
     train_args["scheduler"] = {"Total_steps":total_steps, "Warmup_steps":100}
     #TODO pass scheduler config to train_args
 
-    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False,
-                                             checkpoint=f"checkpoints/q2_diffusion_newunet.pth",
-                                             )
+    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False, checkpoint=f"q2")
     
     #sample from diffusion model
     sample_steps = np.power(2, np.linspace(0, 9, 10)).astype(int)
