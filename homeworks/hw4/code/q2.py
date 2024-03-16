@@ -198,6 +198,7 @@ class ContinuousGaussianDiffusion(nn.Module):
     # 
     @staticmethod
     def DDPM_UPDATE(x, eps_hat, t, tm1):
+        # x = torch.clamp(x, -1, 1)
         alpha_t, sigma_t = noise_strength(t)
         alpha_tm1, sigma_tm1 = noise_strength(tm1)
         
@@ -208,11 +209,13 @@ class ContinuousGaussianDiffusion(nn.Module):
         sigma_tm1 = sigma_tm1.view(expand_shape)
         #𝜂_t
         noise_scale_t =  sigma_tm1/sigma_t * torch.sqrt(1 - (alpha_t/alpha_tm1)**2)
-        x_tm1 = alpha_tm1 * (x - sigma_t * eps_hat)/alpha_t + \
+        x_hat =  (x - sigma_t * eps_hat)/alpha_t
+        x_hat = torch.clamp(x_hat, -1, 1)
+        x_tm1 = alpha_tm1 * x_hat  + \
                     torch.sqrt(torch.relu(sigma_tm1**2 -  noise_scale_t**2))*eps_hat +\
                     noise_scale_t*torch.randn_like(x)
         #clip x_tm1 to -1 to 1
-        x_tm1 = torch.clamp(x_tm1, -1, 1)
+        # x_tm1 = torch.clamp(x_tm1, -1, 1)
         return x_tm1
     @torch.no_grad()
     def ddpm_smapler(self, num_steps, num_samples = 2000, device="cuda"):
@@ -251,6 +254,11 @@ class ContinuousGaussianDiffusion(nn.Module):
         loss = self.loss_function(x_noised, epsilon, t)
         
         return {"loss":loss}
+def normalize_to_neg_one_to_one(img):
+    return img * 2 - 1
+
+def unnormalize_to_zero_to_one(t):
+    return (t + 1) * 0.5
 
 def q2(train_data, test_data):
     """
@@ -269,16 +277,19 @@ def q2(train_data, test_data):
     train_args = {'epochs': 60, 'lr': 1e-3}
     
     Unet = UNet(in_channels=3)
-    # from denoising_diffusion_pytorch import Unet
-    # Unet = Unet(dim=64,
-    #             dim_mults=(1, 2, 4, 8))
+    from denoising_diffusion_pytorch import Unet
+    Unet = Unet(dim=64,
+                dim_mults=(1, 2, 4, 8))
     Unet.input_shape = (3, 32, 32)
     model = ContinuousGaussianDiffusion(Unet)
     #device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    train_data = (train_data - 0.5)*2
-    test_data = (test_data - 0.5)*2
+    # load checkpoint 
+    model.load_state_dict(torch.load("checkpoints/q2_diffusion_unetdebug.pth")["model_state_dict"])
+    
+    train_data = normalize_to_neg_one_to_one(train_data)
+    test_data = normalize_to_neg_one_to_one(test_data)
     # Convert to PyTorch tensors
     train_tensor = torch.tensor(train_data, dtype=torch.float32).permute(0, 3, 1, 2)
     # test_tensor = torch.tensor(train_data, dtype=torch.float32).permute(0, 3, 1, 2)
@@ -296,10 +307,13 @@ def q2(train_data, test_data):
     train_args["scheduler"] = {"Total_steps":total_steps, "Warmup_steps":100}
     #TODO pass scheduler config to train_args
 
-    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False,
-                                             checkpoint=f"checkpoints/q2_diffusion_newunet.pth",
-                                             )
-    
+    # train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False,
+    #                                          checkpoint=f"checkpoints/q2_diffusion_newunet.pth",
+    #                                          )
+    train_losses = {}
+    test_losses = {}
+    train_losses["loss"] = [0]
+    test_losses["loss"] = [0]
     #sample from diffusion model
     sample_steps = np.power(2, np.linspace(0, 9, 10)).astype(int)
     samples_list = []
@@ -308,7 +322,7 @@ def q2(train_data, test_data):
         samples_list.append(samples.detach().cpu().numpy())
     all_samples = np.array(samples_list)
     #unormalize samples
-    all_samples = all_samples * 0.5 + 0.5
+    all_samples = unnormalize_to_zero_to_one(all_samples)
     return train_losses["loss"], test_losses["loss"], all_samples.reshape(10, 10, 32, 32, 3)
 
 if __name__ == "__main__":
