@@ -116,7 +116,7 @@ def train_epochs(model, train_loader, test_loader, train_args, quiet=False, chec
             train_losses[k].extend(train_loss[k])
             test_losses[k].append(test_loss[k])
         
-        if checkpoint is not None and epoch % 10 == 0:
+        if checkpoint is not None and (epoch+1) % 10 == 0:
             #save all information to checkpoint path
             torch.save({
                 'epoch': epoch,

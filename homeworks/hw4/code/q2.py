@@ -214,8 +214,7 @@ class ContinuousGaussianDiffusion(nn.Module):
         x_tm1 = alpha_tm1 * x_hat  + \
                     torch.sqrt(torch.relu(sigma_tm1**2 -  noise_scale_t**2))*eps_hat +\
                     noise_scale_t*torch.randn_like(x)
-        #clip x_tm1 to -1 to 1
-        # x_tm1 = torch.clamp(x_tm1, -1, 1)
+     
         return x_tm1
     @torch.no_grad()
     def ddpm_smapler(self, num_steps, num_samples = 2000, device="cuda"):
@@ -274,19 +273,23 @@ def q2(train_data, test_data):
       1 to 512, i.e. np.power(2, np.linspace(0, 9, 10)).astype(int)
     """
     #normalize the data
-    train_args = {'epochs': 60, 'lr': 1e-3}
+    train_args = {'epochs': 120, 'lr': 1e-3}
     
     Unet = UNet(in_channels=3)
-    from denoising_diffusion_pytorch import Unet
-    Unet = Unet(dim=64,
-                dim_mults=(1, 2, 4, 8))
+    # from denoising_diffusion_pytorch import Unet
+    # Unet = Unet(dim=64,
+    #             dim_mults=(1, 2, 4, 8))
     Unet.input_shape = (3, 32, 32)
     model = ContinuousGaussianDiffusion(Unet)
     #device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    # load checkpoint 
-    model.load_state_dict(torch.load("checkpoints/q2_diffusion_unetdebug.pth")["model_state_dict"])
+    # load checkpoint  and just evaluate
+    # model.load_state_dict(torch.load("checkpoints/q2_diffusion_newunet.pth")["model_state_dict"])
+    # train_losses = {}
+    # test_losses = {}
+    # train_losses["loss"] = [0]
+    # test_losses["loss"] = [0]
     
     train_data = normalize_to_neg_one_to_one(train_data)
     test_data = normalize_to_neg_one_to_one(test_data)
@@ -307,13 +310,10 @@ def q2(train_data, test_data):
     train_args["scheduler"] = {"Total_steps":total_steps, "Warmup_steps":100}
     #TODO pass scheduler config to train_args
 
-    # train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False,
-    #                                          checkpoint=f"checkpoints/q2_diffusion_newunet.pth",
-    #                                          )
-    train_losses = {}
-    test_losses = {}
-    train_losses["loss"] = [0]
-    test_losses["loss"] = [0]
+    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False,
+                                             checkpoint=f"checkpoints/q2_diffusion_newunet_new.pth",
+                                             )
+   
     #sample from diffusion model
     sample_steps = np.power(2, np.linspace(0, 9, 10)).astype(int)
     samples_list = []

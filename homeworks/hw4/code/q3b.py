@@ -20,6 +20,7 @@ warnings.filterwarnings('ignore')
 from utils import *
 from torch.utils.data import DataLoader, TensorDataset
 
+from DiT import DiT
 
 def noise_strength(t):
     alpha_t = torch.cos(torch.pi / 2 * t)
@@ -250,23 +251,37 @@ class ContinuousGaussianDiffusion(nn.Module):
         
         return {"loss":loss}
 
-def q2(train_data, test_data):
+def q3_b(train_data, train_labels, test_data, test_labels, vae):
     """
     train_data: A (50000, 32, 32, 3) numpy array of images in [0, 1]
+    train_labels: A (50000,) numpy array of class labels
     test_data: A (10000, 32, 32, 3) numpy array of images in [0, 1]
+    test_labels: A (10000,) numpy array of class labels
+    vae: a pretrained VAE
 
     Returns
     - a (# of training iterations,) numpy array of train losses evaluated every minibatch
     - a (# of num_epochs + 1,) numpy array of test losses evaluated at the start of training and the end of every epoch
     - a numpy array of size (10, 10, 32, 32, 3) of samples in [0, 1] drawn from your model.
       The array represents a 10 x 10 grid of generated samples. Each row represents 10 samples generated
-      for a specific number of diffusion timesteps. Do this for 10 evenly logarithmically spaced integers
-      1 to 512, i.e. np.power(2, np.linspace(0, 9, 10)).astype(int)
+      for a specific class (i.e. row 0 is class 0, row 1 class 1, ...). Use 512 diffusion timesteps
     """
+
+    """ YOUR CODE HERE """
+
+    return train_losses, test_losses, samples
     #normalize the data
     train_args = {'epochs': 60, 'lr': 1e-3}
-    
-    Unet = UNet(in_channels=3)
+    DiT_config = {
+        "input_shape": (4,8,8), 
+        "patch_size": 2, 
+        "hidden_size": 512, 
+        "num_heads": 8, 
+        "num_layers": 12, 
+        "num_classes": 10, 
+        "cfg_dropout_prob":0.1
+    }
+    DiT = DiT(**DiT_config)
     
     model = ContinuousGaussianDiffusion(Unet)
     #device
