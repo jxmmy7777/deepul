@@ -59,6 +59,7 @@ class ContinuousGaussianDiffusion(nn.Module):
     # 
     @staticmethod
     def DDPM_UPDATE(x, eps_hat, t, tm1):
+        # x = torch.clamp(x, -1, 1)
         alpha_t, sigma_t = noise_strength(t)
         alpha_tm1, sigma_tm1 = noise_strength(tm1)
         
@@ -69,17 +70,18 @@ class ContinuousGaussianDiffusion(nn.Module):
         sigma_tm1 = sigma_tm1.view(expand_shape)
         #𝜂_t
         noise_scale_t =  sigma_tm1/sigma_t * torch.sqrt(1 - (alpha_t/alpha_tm1)**2)
-        x_tm1 = alpha_tm1 * (x - sigma_t * eps_hat)/alpha_t + \
+        x_hat =  (x - sigma_t * eps_hat)/alpha_t
+        # x_hat = torch.clamp(x_hat, -1, 1)
+        x_tm1 = alpha_tm1 * x_hat  + \
                     torch.sqrt(torch.relu(sigma_tm1**2 -  noise_scale_t**2))*eps_hat +\
                     noise_scale_t*torch.randn_like(x)
-        #clip x_tm1 to -1 to 1
-        x_tm1 = torch.clamp(x_tm1, -1, 1)
+        # x_tm1 = torch.clamp(x_tm1, -1, 1)
         return x_tm1
     @torch.no_grad()
     def ddpm_smapler(self, num_steps, num_samples = 2000, device="cuda"):
         ts = torch.linspace(1 - 1e-4, 1e-4, num_steps + 1, device=device)
         x =  torch.randn((num_samples,*self.model.input_shape) , device=device)
-      
+        x  = torch.clamp(x, -1,1)
         for i in range(num_steps):
             t = ts[i]
             tm1 = ts[i + 1]
@@ -153,7 +155,7 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     # return train_losses, test_losses, samples
     #normalize the data
   
-    train_args = {'epochs': 10, 'lr': 1e-3}
+    train_args = {'epochs': 60, 'lr': 1e-3}
     # ---------------------data--------------------------------
     train_data = normalize_to_neg_one_to_one(train_data).transpose(0, 3, 1, 2)
     test_data =  normalize_to_neg_one_to_one(test_data).transpose(0, 3, 1, 2)
@@ -162,6 +164,7 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     vae.to(device) #input 0-1, output -1to 1
     vae.eval()
     scale_factor = 1.2630
+    # scale_factor = 1/0.18#1.2630
     with torch.no_grad():
         train_latents = vae.encode(train_data)/scale_factor #4, 8,8 
         test_latents = vae.encode(test_data)/scale_factor
@@ -192,23 +195,31 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     }
     Diffusion_transformer = DiT(**DiT_config)
     Diffusion_transformer.input_shape = (4,8,8)
+    
     model = ContinuousGaussianDiffusion(Diffusion_transformer)
+    
+    # model.load_state_dict(torch.load("checkpoints/q3b_diffusiontransformer.pth")["model_state_dict"])
+    # train_losses = {}
+    # test_losses = {}
+    # train_losses["loss"] = [0]
+    # test_losses["loss"] = [0]
     #device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False, checkpoint=f"q3b_")
+    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False, checkpoint=f"checkpoints/q3b_diffusiontransformer_changeembed.pth")
     
     #sample from diffusion model
     num_classes_list = np.arange(num_classes)
     samples_list = []
     for i in range(len(num_classes_list)):
-        samples = model.ddpm_smapler_class(512,i, num_samples=10)
+        samples = model.ddpm_smapler_class(512, i, num_samples=10)
         samples_list.append(samples)
     all_samples = torch.stack(samples_list) * scale_factor
     # vae decodoing 
     all_samples = all_samples.reshape(10*10,4,8,8) #10,10, 4,8,8 -> 100,4,8,8
     all_samples_decoded = vae.decode(all_samples).reshape(10,10,3,32,32) #10,10, 3,32,32
+    all_samples_decoded = unnormalize_to_zero_to_one(all_samples_decoded)
     return train_losses["loss"], test_losses["loss"], all_samples_decoded.permute(0,1,3,4,2).detach().cpu().numpy()
 
 if __name__ == "__main__":

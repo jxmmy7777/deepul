@@ -175,7 +175,9 @@ class FinalLayer(nn.Module):
         x = self.fc(x)
         return x
 # patch embedding
+#https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/patch_embed.py#L25
 
+    
 class DiT(nn.Module):
     def __init__(
         self, 
@@ -199,10 +201,14 @@ class DiT(nn.Module):
         num_patch_size = input_shape[1] // patch_size
         self.pos_embed = nn.Parameter(torch.randn(1, num_patch_size*num_patch_size, hidden_size), requires_grad=False) #shouldn't be changed!
         #patch embeding
-        self.to_patch_embedding = nn.Sequential(
-            nn.Conv2d(input_shape[0], hidden_size, kernel_size=patch_size, stride=patch_size),
-            Rearrange('b c h w -> b (h w) c'),
-        )
+        from timm.models.vision_transformer import PatchEmbed
+        self.to_patch_embedding = PatchEmbed(
+            8, patch_size, input_shape[0], hidden_size
+            )
+        # nn.Sequential(
+        #     nn.Conv2d(input_shape[0], hidden_size, kernel_size=patch_size, stride=patch_size),
+        #     Rearrange('b c h w -> b (h w) c'),
+        # )
         self.time_embedder = TimeEmbedder(hidden_size)
         self.class_embedder = ClassEmbedder(num_classes, hidden_size, cfg_dropout_prob)
         
@@ -212,10 +218,30 @@ class DiT(nn.Module):
         self.weight_initialization()
     
     def weight_initialization(self):
+        #transformer initializations
+        def _basic_init(module):
+            if isinstance(module, nn.Linear):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
+        
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], self.input_shape[1] // self.patch_size) #1, H*W, D
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
         
+        #projection
+        w = self.to_patch_embedding.proj.weight.data
+        nn.init.xavier_uniform_(w.view(w.shape[0], -1))
+        nn.init.constant_(self.to_patch_embedding.proj.bias, 0)
         #TODO initialization according to paper (zero initialization?)
+        #initialize embedding
+        nn.init.normal_(self.class_embedder.embed.weight, std=0.02)
+        #time embedding
+        nn.init.normal_(self.time_embedder.mlp[0].weight, std=0.02)
+        nn.init.normal_(self.time_embedder.mlp[2].weight, std=0.02)
+        
+        
+        
         for block in self.blocks:
             nn.init.constant_(block.adaLN[-1].weight, 0)
             nn.init.constant_(block.adaLN[-1].bias, 0)
