@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
-
+import numpy as np
 #################################################################################
 # --------------Sine/Cosine Positional Embedding Functions-----------------------
 #################################################################################
@@ -94,9 +94,9 @@ class ClassEmbedder(nn.Module):
         self.embed = nn.Embedding(num_classes+1, hidden_dim) #a null class for unconditional generation
         self.num_classes = num_classes
     def dropping_context(self, y):
-        drop_ids = torch.rand(y.shapep[0]) <  self.dropout_prob
+        drop_ids = torch.rand(y.shape[0], device = y.device) <  self.dropout_prob
         updated_y = torch.where(drop_ids, self.num_classes, y)
-        return upddated_y
+        return updated_y
     def forward(self, y, training = False):
         
         #y is the label ehre
@@ -174,6 +174,8 @@ class FinalLayer(nn.Module):
         x = modulate(x, shift, scale)
         x = self.fc(x)
         return x
+# patch embedding
+
 class DiT(nn.Module):
     def __init__(
         self, 
@@ -195,8 +197,12 @@ class DiT(nn.Module):
         self.cfg_dropout_prob = cfg_dropout_prob
         
         num_patch_size = input_shape[1] // patch_size
-        self.pos_embed = nn.Parameter(torch.randn(1, num_patch_size, num_patch_size, hidden_size), requires_grad=False) #shouldn't be changed!
-        
+        self.pos_embed = nn.Parameter(torch.randn(1, num_patch_size*num_patch_size, hidden_size), requires_grad=False) #shouldn't be changed!
+        #patch embeding
+        self.to_patch_embedding = nn.Sequential(
+            nn.Conv2d(input_shape[0], hidden_size, kernel_size=patch_size, stride=patch_size),
+            Rearrange('b c h w -> b (h w) c'),
+        )
         self.time_embedder = TimeEmbedder(hidden_size)
         self.class_embedder = ClassEmbedder(num_classes, hidden_size, cfg_dropout_prob)
         
@@ -206,12 +212,17 @@ class DiT(nn.Module):
         self.weight_initialization()
     
     def weight_initialization(self):
-        pos_embed = get_2d_sincos_pos_embed(self.pos_embed[-1], self.input_shape[1] // self.patch_size)
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], self.input_shape[1] // self.patch_size) #1, H*W, D
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
         
         #TODO initialization according to paper (zero initialization?)
-        
-    
+        for block in self.blocks:
+            nn.init.constant_(block.adaLN[-1].weight, 0)
+            nn.init.constant_(block.adaLN[-1].bias, 0)
+        nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.final_layer.fc.weight, 0)
+        nn.init.constant_(self.final_layer.fc.bias, 0)
     def patchify_flatten(self,x):
          # B x C x H x W -> B x (H // P * W // P) x D, P is patch_size
         return rearrange(x, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=self.patch_size, p2=self.patch_size)
@@ -222,14 +233,15 @@ class DiT(nn.Module):
         c, h, w = self.input_shape
         # Reconstruct the image from the patches
         x = x.view(x.shape[0], h//self.patch_size, w//self.patch_size, self.patch_size, self.patch_size, c)
-        x = torch.einsum('b h w p1 p2 c -> b c (h p1) (w p2)', x)
+        x = torch.einsum('b h w p q c -> b c h p w q', x)
         imgs = x.reshape(x.shape[0], c, h, w)
         # x = rearrange(x, 'b (h w) (p1 p2 c) -> b c (h p1) (w p2)', h=h//self.patch_size, w=w//self.patch_size, p1=self.patch_size, p2=self.patch_size, c=c)
         return imgs
             
     def forward(self, x, t, y):
         #   Given x (B x C x H x W) - image, y (B) - class label, t (B) - diffusion timestep
-        x = self.patchify_flatten(x)
+        x = self.to_patch_embedding(x)
+        # x = self.patchify_flatten(x)
         x += self.pos_embed
         
         t = self.time_embedder(t)

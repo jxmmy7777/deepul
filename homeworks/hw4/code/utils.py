@@ -12,9 +12,16 @@ def train(model, train_loader, optimizer, epoch, quiet, grad_clip=None,scheduler
     if not quiet:
         pbar = tqdm(total=len(train_loader.dataset))
     losses = OrderedDict()
-    for x,_ in train_loader:
-        x = x.cuda()
-        out = model.loss(x)
+    for batch in train_loader:
+        if len(batch) == 2:
+            x, y = batch
+            y = y.cuda()  # Move labels to GPU if present
+            x = x.cuda()
+            out = model.loss(x,y)
+        else:
+            x = batch[0]
+            x = x.cuda()
+            out = model.loss(x)
         optimizer.zero_grad()
         out['loss'].backward()
         if grad_clip:
@@ -43,9 +50,16 @@ def eval_loss(model, data_loader, quiet):
     model.eval()
     total_losses = OrderedDict()
     with torch.no_grad():
-        for x,_ in data_loader:
-            x = x.cuda()
-            out = model.loss(x)
+        for batch in data_loader:
+            if len(batch) == 2:
+                x, y = batch
+                y = y.cuda()  # Move labels to GPU if present
+                x = x.cuda()
+                out = model.loss(x,y)
+            else:
+                x = batch[0]
+                x = x.cuda()
+                out = model.loss(x)
             for k, v in out.items():
                 total_losses[k] = total_losses.get(k, 0) + v.item() * x.shape[0]
 

@@ -36,7 +36,7 @@ def q3_a(images, vae):
     #normalize the data
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    vae.to(device) #input 0-1, output -1to 1
+    vae.to(device) #input -1 to 11, output -1to 1
     vae.eval()
     
     #reconstruct
