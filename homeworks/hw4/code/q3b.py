@@ -93,7 +93,7 @@ class ContinuousGaussianDiffusion(nn.Module):
         return x
 
     @torch.no_grad()
-    def ddpm_smapler_class(self, num_steps,y, num_samples = 2000, device="cuda"):
+    def ddpm_smapler_class(self, num_steps,y, num_samples = 2000, device="cuda", cfg=False, w = 1.0):
         ts = torch.linspace(1 - 1e-4, 1e-4, num_steps + 1, device=device)
         x =  torch.randn((num_samples,*self.model.input_shape) , device=device)
         y = torch.tensor([y], device=device)
@@ -104,7 +104,11 @@ class ContinuousGaussianDiffusion(nn.Module):
             t = t.expand(x.shape[0])
             tm1 = tm1.expand(x.shape[0])
             y = y.expand(x.shape[0])
-            eps_hat = self.model(x, t, y)
+            
+            if cfg:
+                eps_hat = self.model.forward_cfg(x, t, y, w=w)
+            else:
+                eps_hat = self.model(x, t, y)
             x = self.DDPM_UPDATE(x, eps_hat, t, tm1)
         return x
     def forward_diffusion(self, x, t):
@@ -231,6 +235,7 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
                                              checkpoint=f"checkpoints/q3b_diffusiontransformer_change_atten.pth")
     
     #sample from diffusion model
+    model.eval()
     num_classes_list = np.arange(num_classes)
     samples_list = []
     for i in range(len(num_classes_list)):
@@ -243,8 +248,62 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     all_samples_decoded = unnormalize_to_zero_to_one(all_samples_decoded)
     return train_losses["loss"], test_losses["loss"], all_samples_decoded.permute(0,1,3,4,2).detach().cpu().numpy()
 
+def q3_c(vae):
+    """
+    vae: a pretrained vae
+
+    Returns
+    - a numpy array of size (4, 10, 10, 32, 32, 3) of samples in [0, 1] drawn from your model.
+      The array represents a 4 x 10 x 10 grid of generated samples - 4 10 x 10 grid of samples
+      with 4 different CFG values of w = {1.0, 3.0, 5.0, 7.5}. Each row of the 10 x 10 grid
+      should contain samples of a different class. Use 512 diffusion sampling timesteps.
+    """
+
+    """ YOUR CODE HERE """
+    scale_factor = 1.2630
+    num_classes = 10
+    # --------------models----------------
+    DiT_config = {
+        "input_shape": (4,8,8), 
+        "patch_size": 2, 
+        "hidden_size": 512, 
+        "num_heads": 8, 
+        "num_layers": 12, 
+        "num_classes": num_classes, 
+        "cfg_dropout_prob":0.1
+    }
+    Diffusion_transformer = DiT(**DiT_config)
+    Diffusion_transformer.input_shape = (4,8,8)
+    
+    model = ContinuousGaussianDiffusion(Diffusion_transformer)
+    
+    model.load_state_dict(torch.load("checkpoints/q3b_diffusiontransformer_change_atten.pth")["model_state_dict"])
+    #device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    
+     #sample from diffusion model
+    model.eval()
+    num_classes_list = np.arange(num_classes)
+    samples_list = []
+    w_list = {1.0, 3.0, 5.0, 7.5}
+    for w in w_list:
+        for i in range(len(num_classes_list)):
+            samples = model.ddpm_smapler_class(512, i, num_samples=10, cfg=True, w=w)
+            samples_list.append(samples)
+            
+    all_samples = torch.stack(samples_list)
+    # vae decodoing 
+    all_samples = all_samples.reshape(4*10*10,4,8,8) * scale_factor #10,10, 4,8,8 -> 100,4,8,8
+    all_samples_decoded = vae.decode(all_samples).reshape(4,10,10,3,32,32) #10,10, 3,32,32
+    all_samples_decoded = unnormalize_to_zero_to_one(all_samples_decoded)
+
+    return all_samples_decoded.permute(0,1,2,4,5,3).detach().cpu().numpy()
+
+
 if __name__ == "__main__":
-    q3b_save_results(q3_b)
+    # q3b_save_results(q3_b)
+    q3c_save_results(q3_c)
     #test Unet 
     # model = UNet(3)
     # input = torch.randn(1, 3, 32, 32)

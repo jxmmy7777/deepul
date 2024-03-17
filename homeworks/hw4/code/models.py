@@ -286,6 +286,26 @@ class DiT(nn.Module):
         x = self.final_layer(x, c)
         x = self.unpatchify(x)
         return x
+    
+    def forward_cfg(self, x, t, y, w):
+        """Classifier Free guidances, w is the guidance vector
+        """
+        #expand x twice in batch
+        # Prepare null class labels for unconditional generation
+        y_null = torch.full_like(y, fill_value=self.class_embedder.num_classes)
+        
+        # Concatenate conditional and unconditional inputs
+        x = torch.cat([x, x], dim=0)
+        t = torch.cat([t, t], dim=0)
+        y = torch.cat([y, y_null], dim=0)  # Use actual labels for first half, null labels for second
+    
+        
+        eps = self.forward(x, t, y)
+        cond_eps, uncond_eps = torch.split(eps, eps.shape[0]//2, dim=0)
+        #use w to guide the conditional part
+        eps_hat = uncond_eps + w * (cond_eps - uncond_eps)
+        return eps_hat
+        
 # DiT(input_shape, patch_size, hidden_size, num_heads, num_layers, num_classes, cfg_dropout_prob)
 #     Given x (B x C x H x W) - image, y (B) - class label, t (B) - diffusion timestep
 #     x = patchify_flatten(x) # B x C x H x W -> B x (H // P * W // P) x D, P is patch_size
