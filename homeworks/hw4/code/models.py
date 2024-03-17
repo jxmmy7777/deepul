@@ -4,6 +4,9 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 import numpy as np
+
+
+from timm.models.vision_transformer import PatchEmbed, Attention
 #################################################################################
 # --------------Sine/Cosine Positional Embedding Functions-----------------------
 #################################################################################
@@ -113,7 +116,8 @@ class DiTBlock(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.msa = nn.MultiheadAttention(hidden_size, num_heads, dropout=0.1)
+        # self.msa = nn.MultiheadAttention(hidden_size, num_heads, add_bias_kv=True, dropout=0.0)
+        self.attn = Attention(hidden_size, num_heads , qkv_bias=True) #Note changing this attention matters
         self.mlp = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.SiLU(),
@@ -133,8 +137,8 @@ class DiTBlock(nn.Module):
 
         h = self.norm1(x)
         h = modulate(h, shift_msa, scale_msa)
-        x = x + gate_msa.unsqueeze(1) * self.msa(h, h, h)[0]
-       
+        # x = x + gate_msa.unsqueeze(1) * self.msa(h, h, h)[0]
+        x = x + gate_msa.unsqueeze(1) * self.attn(h)
         h = self.norm2(x)
         h = modulate(h, shift_mlp, scale_mlp)
         x = x + gate_mlp.unsqueeze(1) * self.mlp(h)
@@ -201,9 +205,9 @@ class DiT(nn.Module):
         num_patch_size = input_shape[1] // patch_size
         self.pos_embed = nn.Parameter(torch.randn(1, num_patch_size*num_patch_size, hidden_size), requires_grad=False) #shouldn't be changed!
         #patch embeding
-        from timm.models.vision_transformer import PatchEmbed
+       
         self.to_patch_embedding = PatchEmbed(
-            8, patch_size, input_shape[0], hidden_size
+            8, patch_size, input_shape[0], hidden_size, bias=True
             )
         # nn.Sequential(
         #     nn.Conv2d(input_shape[0], hidden_size, kernel_size=patch_size, stride=patch_size),

@@ -81,7 +81,7 @@ class ContinuousGaussianDiffusion(nn.Module):
     def ddpm_smapler(self, num_steps, num_samples = 2000, device="cuda"):
         ts = torch.linspace(1 - 1e-4, 1e-4, num_steps + 1, device=device)
         x =  torch.randn((num_samples,*self.model.input_shape) , device=device)
-        x  = torch.clamp(x, -1,1)
+        # x  = torch.clamp(x, -1,1)
         for i in range(num_steps):
             t = ts[i]
             tm1 = ts[i + 1]
@@ -166,9 +166,13 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     scale_factor = 1.2630
     # scale_factor = 1/0.18#1.2630
     with torch.no_grad():
-        train_latents = vae.encode(train_data)/scale_factor #4, 8,8 
-        test_latents = vae.encode(test_data)/scale_factor
-
+        train_latents = vae.encode(train_data)/ scale_factor #4, 8,8 
+        test_latents = vae.encode(test_data)/ scale_factor
+    #calculate scale_factor
+    # scale_factor = torch.std(train_latents.flatten())
+    # train_latents = train_latents / scale_factor
+    # test_latents = test_latents / scale_factor
+    print(f"scale_fcator{scale_factor}")
     train_labels = torch.tensor(train_labels,dtype=torch.long)
     test_labels = torch.tensor(test_labels,dtype=torch.long)
     # Create TensorDatasets
@@ -182,7 +186,7 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     total_steps = len(train_loader) * train_args["epochs"]
     train_args["scheduler"] = {"Total_steps":total_steps, "Warmup_steps":100}
     #TODO pass scheduler config to train_args
-    num_classes = np.unique(train_labels).shape[0]
+    num_classes = 10
     # --------------models----------------
     DiT_config = {
         "input_shape": (4,8,8), 
@@ -196,9 +200,25 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     Diffusion_transformer = DiT(**DiT_config)
     Diffusion_transformer.input_shape = (4,8,8)
     
+    # from DiT_reference import DiT
+    # DiT_config = {
+    #     "input_size": 8,
+    #     "in_channels":4, 
+    #     "patch_size": 2, 
+    #     "hidden_size": 512, 
+    #     "num_heads": 8, 
+    #     "depth": 12, 
+    #     "num_classes": num_classes, 
+    #     "learn_sigma": False
+    #     # "cfg_dropout_prob":0.1
+    # }
+    
+    # Diffusion_transformer = DiT(**DiT_config)
+    # Diffusion_transformer.input_shape = (4,8,8)
+    
     model = ContinuousGaussianDiffusion(Diffusion_transformer)
     
-    # model.load_state_dict(torch.load("checkpoints/q3b_diffusiontransformer.pth")["model_state_dict"])
+    # model.load_state_dict(torch.load("checkpoints/q3b_diffusiontransformer_change_atten.pth")["model_state_dict"])
     # train_losses = {}
     # test_losses = {}
     # train_losses["loss"] = [0]
@@ -207,7 +227,8 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False, checkpoint=f"checkpoints/q3b_diffusiontransformer_changeembed.pth")
+    train_losses, test_losses = train_epochs(model, train_loader, test_loader, train_args, quiet=False, 
+                                             checkpoint=f"checkpoints/q3b_diffusiontransformer_change_atten.pth")
     
     #sample from diffusion model
     num_classes_list = np.arange(num_classes)
@@ -215,9 +236,9 @@ def q3_b(train_data, train_labels, test_data, test_labels, vae):
     for i in range(len(num_classes_list)):
         samples = model.ddpm_smapler_class(512, i, num_samples=10)
         samples_list.append(samples)
-    all_samples = torch.stack(samples_list) * scale_factor
+    all_samples = torch.stack(samples_list)
     # vae decodoing 
-    all_samples = all_samples.reshape(10*10,4,8,8) #10,10, 4,8,8 -> 100,4,8,8
+    all_samples = all_samples.reshape(10*10,4,8,8) * scale_factor #10,10, 4,8,8 -> 100,4,8,8
     all_samples_decoded = vae.decode(all_samples).reshape(10,10,3,32,32) #10,10, 3,32,32
     all_samples_decoded = unnormalize_to_zero_to_one(all_samples_decoded)
     return train_losses["loss"], test_losses["loss"], all_samples_decoded.permute(0,1,3,4,2).detach().cpu().numpy()
